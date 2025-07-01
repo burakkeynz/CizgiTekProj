@@ -125,7 +125,7 @@ async def login_token(form_data: form_dependency, db: db_dependency, response: R
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,
+        secure=False, #For development mode, I made this intentionally False, it should be true when we use https://
         samesite="Strict",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
