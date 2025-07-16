@@ -1,9 +1,10 @@
 from fastapi import FastAPI
-from backend.routers import auth, users
+from backend.routers import auth, users, gemini
 from backend.models import Base
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import engine
 import os
+
 
 app = FastAPI()
 
@@ -25,3 +26,4 @@ def enrtry_point():
 Base.metadata.create_all(bind=engine)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(gemini.router)

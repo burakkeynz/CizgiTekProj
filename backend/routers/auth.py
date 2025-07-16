@@ -76,6 +76,52 @@ async def get_current_user_from_cookie(request: Request):
             detail='Could not validate credentials'
         )
 
+@router.get("/me")
+async def get_me(request: Request, response: Response):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get('sub')
+        user_id = payload.get('id')
+        user_role = payload.get('role')
+        # Her f5 te yeni token üretiliyor
+        new_token = create_token(
+            username,
+            user_id,
+            user_role,
+            timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        response.set_cookie(
+            key="access_token",
+            value=new_token,
+            httponly=True,
+            secure=False,  # localde false kalabilir ama sonradan True olmalı
+            samesite="Strict",
+            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+       
+        new_payload = jwt.decode(new_token, SECRET_KEY, algorithms=[ALGORITHM])
+        exp = new_payload.get('exp')
+        now = datetime.now(timezone.utc).timestamp()
+        expires_in = int(exp - now)
+        return {
+            'username': username,
+            'id': user_id,
+            'role': user_role,
+            'expires_in': expires_in
+        }
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Could not validate credentials'
+        )
+
+
 def authenticate_user(username: str, password: str, db):
     user = db.query(Users).filter(Users.username == username).first()
     if not user:
@@ -88,15 +134,15 @@ def authenticate_user(username: str, password: str, db):
 async def get_me(user = Depends(get_current_user_from_cookie)):
     return user
 
-@router.post('/create_user', status_code=status.HTTP_201_CREATED)
-def create_user(create_user_request: CreateUserRequest, db: db_dependency):
+@router.post('/register', status_code=status.HTTP_201_CREATED)
+def register(register_request: CreateUserRequest, db: db_dependency):
     userModel = Users(
-        email=create_user_request.email,
-        username=create_user_request.username,
-        first_name=create_user_request.first_name,
-        last_name=create_user_request.last_name,
-        hashed_password=bcrypt_context.hash(create_user_request.password),
-        role=create_user_request.role,
+        email=register_request.email,
+        username=register_request.username,
+        first_name=register_request.first_name,
+        last_name=register_request.last_name,
+        hashed_password=bcrypt_context.hash(register_request.password),
+        role=register_request.role,
     )
     db.add(userModel)
     db.commit()
