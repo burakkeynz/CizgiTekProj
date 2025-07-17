@@ -1,34 +1,160 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FiSearch, FiUpload, FiArrowRight } from "react-icons/fi";
+import { FiSearch, FiUpload, FiArrowRight, FiX } from "react-icons/fi";
+import { useLocation } from "react-router-dom";
 import api from "../api";
 
+// Daha güvenli sessionStorage key:
+const SESSION_KEY = "ai_assistang_logs:";
+
+// Başlangıç mesajı:
+const INITIAL_MSG = [
+  {
+    role: "model",
+    text: "Merhaba! Size nasıl yardımcı olabilirim?",
+  },
+];
+function DotLoader() {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: 32,
+      }}
+    >
+      <span className="dot">.</span>
+      <span className="dot">.</span>
+      <span className="dot">.</span>
+      <style>
+        {`
+          .dot {
+            animation: blink 1.4s infinite both;
+            font-size: 22px;
+          }
+          .dot:nth-child(2) {
+            animation-delay: .2s;
+          }
+          .dot:nth-child(3) {
+            animation-delay: .4s;
+          }
+          @keyframes blink {
+            0% { opacity: .1; }
+            20% { opacity: 1; }
+            100% { opacity: .1; }
+          }
+        `}
+      </style>
+    </span>
+  );
+}
+
 function Assistant() {
-  const [messages, setMessages] = useState([
-    {
-      role: "model",
-      text: "Merhaba! Size nasıl yardımcı olabilirim?",
-    },
-  ]);
+  const location = useLocation();
+  const [isOpen, setIsOpen] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("ai_assistant_open");
+      return saved === null ? true : JSON.parse(saved);
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem("ai_assistant_open", JSON.stringify(isOpen));
+  }, [isOpen]);
+
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      return saved ? JSON.parse(saved) : INITIAL_MSG;
+    } catch {
+      return INITIAL_MSG;
+    }
+  });
+
+  useEffect(() => {
+    // f5 veya baska sayfa geçişinde sayfa kapatmak için
+    setIsOpen(false);
+    sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
+  }, [location]);
+
+  // Diğer state’ler:
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [activeTool, setActiveTool] = useState(null); // search, upload null olabiliyor
   const [selectedFile, setSelectedFile] = useState(null);
   const messagesEndRef = useRef(null);
 
+  //effect for message updates
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isOpen]);
+
+  // panel kapama
+  const handleClose = () => setIsOpen(false);
+
+  //baloncuk
+  if (!isOpen) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          bottom: 24,
+          right: 32,
+          zIndex: 50,
+          // maxWidth: "96%",
+          // minWidth: 320,
+          cursor: "pointer",
+          background: "#0066ff",
+          color: "#fff",
+          borderRadius: "50%",
+          width: 54,
+          height: 54,
+          boxShadow: "0 3px 18px #0066ff33",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 32,
+          fontWeight: "bold",
+        }}
+        onClick={() => setIsOpen(true)}
+        title="AI Asistan'ı aç"
+      >
+        💬
+      </div>
+    );
+  }
+
+  const handleEndDiscussion = async () => {
+    try {
+      const logs = sessionStorage.getItem(SESSION_KEY);
+      if (logs && JSON.parse(logs).length > 1) {
+        await api.post("/chatlogs/", {
+          messages: JSON.parse(logs),
+          ended_at: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.error("Chat log veritabana kaydedilemedi:", e);
+    }
+    setMessages(INITIAL_MSG);
+    sessionStorage.removeItem(SESSION_KEY);
+    setIsOpen(false);
+  };
 
   const sendMessage = async () => {
     if (loading || (!input.trim() && !selectedFile)) return;
-
     setLoading(true);
 
     let userMsg;
     let updatedMessages = [...messages];
 
     if (activeTool === "upload" && selectedFile) {
-      // Dosyayı base64 encode et
       const file = selectedFile;
       const fileBytes = await file.arrayBuffer();
       const base64Data = btoa(
@@ -78,26 +204,37 @@ function Assistant() {
         text: input || (selectedFile && selectedFile.name) || "Dosya",
         ...(userMsg.parts && { parts: userMsg.parts }),
       },
+      {
+        role: "model",
+        text: "...", // loader text
+        isLoader: true, // loader flag
+      },
     ]);
 
     try {
       let payload = { contents };
-      // Web Search aktifse ekle
       if (activeTool === "search") {
         payload.web_search = true;
       }
       const res = await api.post("/gemini/chat", payload);
       const responseText =
-        res.data?.candidates?.[0]?.content?.parts?.[0]?.text || "Yanıt yok";
-      setMessages((msgs) => [...msgs, { role: "model", text: responseText }]);
+        res.data?.response || res.data?.raw_response || "Yanıt yok";
+
+      setMessages((msgs) => {
+        const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
+        return [...msgsWithoutLoader, { role: "model", text: responseText }];
+      });
     } catch (err) {
-      setMessages((msgs) => [
-        ...msgs,
-        {
-          role: "model",
-          text: "Bir hata oluştu, lütfen tekrar deneyin.",
-        },
-      ]);
+      setMessages((msgs) => {
+        const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
+        return [
+          ...msgsWithoutLoader,
+          {
+            role: "model",
+            text: "Bir hata oluştu, lütfen tekrar deneyin.",
+          },
+        ];
+      });
     } finally {
       setLoading(false);
       setActiveTool(null);
@@ -114,15 +251,20 @@ function Assistant() {
   return (
     <div
       style={{
-        maxWidth: 480,
-        margin: "40px auto",
+        position: "absolute",
+        bottom: 4,
+        right: 16,
+        left: 16,
+        zIndex: 50,
+        maxWidth: "calc(100% - 32px)",
         border: "1px solid #eee",
         borderRadius: 16,
         background: "#f8fafc",
         boxShadow: "0 2px 12px #cbd5e166",
         display: "flex",
         flexDirection: "column",
-        height: 520,
+        height: 475,
+        minWidth: 320,
       }}
     >
       <div
@@ -135,9 +277,23 @@ function Assistant() {
           textAlign: "center",
           fontWeight: "bold",
           fontSize: 18,
+          position: "relative",
         }}
       >
         AI-Assistant
+        <span
+          style={{
+            position: "absolute",
+            right: 18,
+            top: 14,
+            cursor: "pointer",
+            opacity: 0.85,
+          }}
+          onClick={handleClose}
+          title="Kapat"
+        >
+          <FiX size={22} />
+        </span>
       </div>
 
       <div
@@ -162,14 +318,31 @@ function Assistant() {
               maxWidth: "78%",
               whiteSpace: "pre-wrap",
               fontSize: 15,
+              minHeight: msg.isLoader ? 28 : undefined,
+              display: "flex",
+              alignItems: "center",
             }}
           >
-            {msg.text}
+            {msg.isLoader ? (
+              // Basit loader veya animasyonlu:
+              <span
+                style={{
+                  letterSpacing: 3,
+                  fontWeight: 600,
+                  fontSize: 21,
+                }}
+              >
+                <DotLoader />
+              </span>
+            ) : (
+              msg.text
+            )}
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Araç çubuğu */}
       <div
         style={{
           display: "flex",
@@ -180,6 +353,7 @@ function Assistant() {
           background: "#f8fafc",
         }}
       >
+        {/* ... Web search ve Dosya Yükle butonları */}
         <button
           onClick={() =>
             setActiveTool(activeTool === "search" ? null : "search")
@@ -254,6 +428,7 @@ function Assistant() {
         )}
       </div>
 
+      {/* Input ve End Discussion */}
       <div
         style={{
           display: "flex",
@@ -306,6 +481,23 @@ function Assistant() {
           title="Gönder"
         >
           <FiArrowRight size={20} />
+        </button>
+        {/* End Discussion */}
+        <button
+          onClick={handleEndDiscussion}
+          style={{
+            marginLeft: 9,
+            fontSize: 13,
+            color: "#555",
+            border: "1px solid #c0c4cc",
+            borderRadius: 7,
+            padding: "7px 13px",
+            background: "#f8fafc",
+            cursor: "pointer",
+            fontWeight: 500,
+          }}
+        >
+          End Discussion
         </button>
       </div>
     </div>

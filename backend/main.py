@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from backend.routers import auth, users, gemini
+from backend.routers import auth, users, gemini, chatlogs
 from backend.models import Base
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import engine
@@ -27,3 +27,4 @@ Base.metadata.create_all(bind=engine)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(gemini.router)
+app.include_router(chatlogs.router)

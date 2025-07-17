@@ -1,56 +1,75 @@
+# Gerekli modülleri import et
 from fastapi import APIRouter, HTTPException, Body
 from dotenv import load_dotenv
 import os
-import google.generativeai as genai
-import google.generativeai.types as types
+import anyio
+from google import genai
+from google.genai import types
 
+# .env dosyasını yükle
 load_dotenv()
 
+# API Router oluştur
 router = APIRouter(prefix="/gemini", tags=["gemini"])
 
+# API key ve model ismini oku
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL = "gemini-2.5-flash-lite-preview-06-17"
+MODEL = "gemini-2.5-flash"  # Web search desteği için önerilen model adı
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel(MODEL)
+if not GEMINI_API_KEY:
+    raise RuntimeError("Gemini API key not set!")
 
+# Gemini client'ı başlat
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Chat endpoint'i
 @router.post("/chat")
 async def gemini_chat(payload: dict = Body(...)):
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Gemini API key not set")
+    # 1. Prompt'ı düzgün şekilde string olarak hazırla
+    contents = payload.get("contents", "")
+    # Eğer contents array ise, son mesajın texti 
+    if isinstance(contents, list) and contents:
+        last_msg = contents[-1]
+        text = ""
+        if "parts" in last_msg and isinstance(last_msg["parts"], list):
+            for part in last_msg["parts"]:
+                if "text" in part:
+                    text = part["text"]
+                    break
+        else:
+            text = last_msg.get("text", "")
+    else:
+        text = contents
 
-    contents = payload.get("contents", [])
     use_web_search = payload.get("web_search", False)
 
     try:
-        generation_config = None
-        tool_config = None
-
+        config = None
         if use_web_search:
-            grounding_tool = types.Tool(google_search=types.GoogleSearch())
-            generation_config = types.GenerateContentConfig(tools=[grounding_tool])
-            tool_config = types.tool_config.ToolConfig(
-                function_calling_config=types.tool_config.FunctionCallingConfig(
-                    mode=types.tool_config.FunctionCallingConfig.Mode.AUTO
+            grounding_tool = types.Tool(
+                google_search=types.GoogleSearch()
+            )
+            config = types.GenerateContentConfig(
+                tools=[grounding_tool]
+            )
+
+        def make_request():
+            if config:
+                return client.models.generate_content(
+                    model=MODEL,
+                    contents=text,
+                    config=config
                 )
-            )
-
-        if generation_config:
-            response = await model.generate_content_async(
-                contents=contents,
-                generation_config=generation_config,
-                tool_config=tool_config
-            )
+            else:
+                return client.models.generate_content(
+                    model=MODEL,
+                    contents=text
+                )
+        response = await anyio.to_thread.run_sync(make_request)
+        if hasattr(response, "text") and response.text:
+            return {"response": response.text}
         else:
-            response = await model.generate_content_async(contents=contents)
-
-        if response and hasattr(response, "candidates") and response.candidates:
-            return response.to_dict()
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Gemini modelinden boş veya geçersiz yanıt alındı."
-            )
+            return {"raw_response": str(response)}
     except Exception as e:
         import traceback
         traceback.print_exc()

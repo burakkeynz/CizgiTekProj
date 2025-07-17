@@ -1,67 +1,30 @@
 import React from "react";
-import Navbar from "./Navbar";
-import Main from "./Main";
-import Assistant from "./Assistant";
 
 function Dashboard() {
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "100px 1fr 320px",
+        flex: 1,
+        padding: 40,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        justifyContent: "flex-start",
         minHeight: "100vh",
-        background: "#f8fafc",
       }}
     >
-      {/* Navbar kısmı */}
-      <div
+      <h1
         style={{
-          gridColumn: "1 / 2",
-          gridRow: "1 / 2",
-          zIndex: 2,
-          background: "#38404a",
-          boxShadow: "2px 0 8px #dde1e6",
+          fontSize: 30,
+          fontWeight: 700,
+          color: "#38404a",
+          marginBottom: 14,
         }}
       >
-        <Navbar />
-      </div>
-
-      {/* WebRTC olsun Main olsun vs */}
-      <div
-        style={{
-          gridColumn: "2 / 3",
-          gridRow: "1 / 2",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Main />
-      </div>
-
-      {/* Profil ve Chat kısmı için ayırdıgım alan */}
-      <div
-        style={{
-          gridColumn: "3 / 4",
-          gridRow: "1 / 2",
-          background: "#f8fafc",
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "center",
-          padding: "24px 0",
-          borderLeft: "1.5px solid #e4e8ef",
-          boxShadow: "-1px 0 10px #dde1e6",
-        }}
-      >
-        <div
-          style={{
-            width: 285,
-            maxWidth: "100%",
-            minHeight: 380,
-          }}
-        >
-          <Assistant />
-        </div>
+        Dashboard
+      </h1>
+      <div style={{ color: "#9aa4b1", fontSize: 17 }}>
+        Burada özet ve istatistik bilgileri gözükecek
       </div>
     </div>
   );

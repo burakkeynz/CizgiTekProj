@@ -101,7 +101,7 @@ async def get_me(request: Request, response: Response):
             value=new_token,
             httponly=True,
             secure=False,  # localde false kalabilir ama sonradan True olmalı
-            samesite="Strict",
+            samesite="Lax",
             max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
         )
        
@@ -128,10 +128,6 @@ def authenticate_user(username: str, password: str, db):
         return False
     if not bcrypt_context.verify(password, user.hashed_password):
         return False
-    return user
-
-@router.get("/me")
-async def get_me(user = Depends(get_current_user_from_cookie)):
     return user
 
 @router.post('/register', status_code=status.HTTP_201_CREATED)
@@ -172,7 +168,7 @@ async def login_token(form_data: form_dependency, db: db_dependency, response: R
         value=access_token,
         httponly=True,
         secure=False, #For development mode, I made this intentionally False, it should be true when we use https://
-        samesite="Strict",
+        samesite="Lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
     
