@@ -39,8 +39,10 @@ function Login() {
     try {
       await api.post("/auth/token", data);
 
-      // navigate kullandım ama window.location.href de olabilir emin dğeilim
-      navigate("/dashboard");
+      // navigate kullandım ama window.location.href de olabilir emin dğeilim, revise: window olmalı navigate problem yaratıyor
+      // navigate("/dashboard");
+      window.location.reload();
+
       // Eğer useAuthCheck hook "cookie geldiyse session var" gibi anlayacak kadar hızlı değilse:
       // window.location.href = "/dashboard"; // garanti olabilir
     } catch (err) {

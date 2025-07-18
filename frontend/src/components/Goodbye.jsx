@@ -1,7 +1,9 @@
-// src/components/Goodbye.js
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 function Goodbye() {
+  const navigate = useNavigate();
+
   return (
     <div
       style={{

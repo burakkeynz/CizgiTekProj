@@ -4,6 +4,7 @@ import useAuthCheck from "./hooks/useAuthCheck";
 
 import Navbar from "./components/Navbar";
 import Assistant from "./components/Assistant";
+import UserInfoCard from "./components/UserInfoCard";
 import Main from "./components/Main";
 import Logs from "./components/Logs";
 import Dashboard from "./components/Dashboard";
@@ -18,45 +19,52 @@ function App() {
   const alreadyRedirected = useRef(false);
 
   const pathname = location.pathname;
-  const publicRoutes = ["/login", "/register", "/session-expired", "/goodbye"];
-  const isPublicRoute = publicRoutes.includes(pathname);
+
+  // ✅ goodbye sayfası kontrol dışı bırakıldı
+  const authCheckRoutes = [
+    "/login",
+    "/register",
+    "/session-expired",
+    "/goodbye",
+  ];
+  const isPublicRoute = authCheckRoutes.includes(pathname);
   const shouldCheckSession = !isPublicRoute;
 
-  const hasSession = useAuthCheck(shouldCheckSession);
+  const { hasSession, user, expiresIn, expired } =
+    useAuthCheck(shouldCheckSession);
 
-  // route değişince yönlendirme sıfırlama
   useEffect(() => {
     alreadyRedirected.current = false;
   }, [pathname]);
 
-  // // Debug log
-  // useEffect(() => {
-  //   console.log("App.js RENDER");
-  //   console.log("Path:", pathname);
-  //   console.log("shouldCheckSession:", shouldCheckSession);
-  //   console.log("hasSession:", hasSession);
-  //   console.log("isPublicRoute:", isPublicRoute);
-  // }, [pathname, shouldCheckSession, hasSession, isPublicRoute]);
-
-  // oturum kontrolü tamamlandıysa yönlendiriyorum
   useEffect(() => {
     if (alreadyRedirected.current) return;
 
+    // ⛔️ Goodbye sayfasında yönlendirme yapılmasın
     if (hasSession === false && shouldCheckSession) {
       alreadyRedirected.current = true;
-      navigate("/session-expired", { replace: true });
+
+      if (expired) {
+        navigate("/session-expired", { replace: true });
+      } else {
+        navigate("/login", { replace: true });
+      }
+
       return;
     }
 
-    if (hasSession === true && isPublicRoute) {
+    // ✅ sadece login/register’daysan yönlendir (goodbye değil!)
+    if (
+      hasSession === true &&
+      (pathname === "/login" || pathname === "/register")
+    ) {
       alreadyRedirected.current = true;
       navigate("/dashboard", { replace: true });
-      return;
     }
-  }, [hasSession, isPublicRoute, shouldCheckSession, pathname, navigate]);
+  }, [hasSession, shouldCheckSession, pathname, expired, navigate]);
 
-  // oturum kontrolü sürerken boş ekran göstertiyorum
-  if (shouldCheckSession && hasSession === null) return null;
+  // auth durumu belli değilse hiçbir şey render etme
+  if (hasSession === null) return null;
 
   const showLayout = hasSession === true && !isPublicRoute;
 
@@ -82,12 +90,12 @@ function App() {
             borderLeft: "1.5px solid #e4e8ef",
             boxShadow: "-1px 0 10px #dde1e6",
             display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "center",
-            position: "relative",
-            overflow: "hidden",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            background: "#fff",
           }}
         >
+          {user && <UserInfoCard user={user} expiresIn={expiresIn} />}
           <Assistant />
         </div>
       )}

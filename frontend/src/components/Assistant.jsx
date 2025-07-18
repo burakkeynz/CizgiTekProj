@@ -3,24 +3,17 @@ import { FiSearch, FiUpload, FiArrowRight, FiX } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 
-// Daha güvenli sessionStorage key:
 const SESSION_KEY = "ai_assistang_logs:";
-
-// Başlangıç mesajı:
 const INITIAL_MSG = [
   {
     role: "model",
     text: "Merhaba! Size nasıl yardımcı olabilirim?",
   },
 ];
+
 function DotLoader() {
   return (
-    <span
-      style={{
-        display: "inline-block",
-        width: 32,
-      }}
-    >
+    <span style={{ display: "inline-block", width: 32 }}>
       <span className="dot">.</span>
       <span className="dot">.</span>
       <span className="dot">.</span>
@@ -72,19 +65,17 @@ function Assistant() {
   });
 
   useEffect(() => {
-    // f5 veya baska sayfa geçişinde sayfa kapatmak için
+    // sayfa geçişinde kapansın
     setIsOpen(false);
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
   }, [location]);
 
-  // Diğer state’ler:
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [activeTool, setActiveTool] = useState(null); // search, upload null olabiliyor
+  const [activeTool, setActiveTool] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const messagesEndRef = useRef(null);
 
-  //effect for message updates
   useEffect(() => {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages));
@@ -95,10 +86,8 @@ function Assistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
 
-  // panel kapama
   const handleClose = () => setIsOpen(false);
 
-  //baloncuk
   if (!isOpen) {
     return (
       <div
@@ -107,8 +96,6 @@ function Assistant() {
           bottom: 24,
           right: 32,
           zIndex: 50,
-          // maxWidth: "96%",
-          // minWidth: 320,
           cursor: "pointer",
           background: "#0066ff",
           color: "#fff",
@@ -206,8 +193,8 @@ function Assistant() {
       },
       {
         role: "model",
-        text: "...", // loader text
-        isLoader: true, // loader flag
+        text: "...",
+        isLoader: true,
       },
     ]);
 
@@ -251,33 +238,29 @@ function Assistant() {
   return (
     <div
       style={{
-        position: "absolute",
-        bottom: 4,
-        right: 16,
-        left: 16,
-        zIndex: 50,
-        maxWidth: "calc(100% - 32px)",
-        border: "1px solid #eee",
-        borderRadius: 16,
+        width: "100%",
+        height: 475,
+        maxHeight: 480,
         background: "#f8fafc",
-        boxShadow: "0 2px 12px #cbd5e166",
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        border: "1px solid #e4e4e4",
+        boxShadow: "0 -2px 10px #00000008",
         display: "flex",
         flexDirection: "column",
-        height: 475,
-        minWidth: 320,
+        position: "relative",
       }}
     >
       <div
         style={{
           background: "#0066ff",
           color: "#fff",
-          padding: "14px 0",
+          padding: "12px 0",
           borderTopLeftRadius: 16,
           borderTopRightRadius: 16,
           textAlign: "center",
           fontWeight: "bold",
           fontSize: 18,
-          position: "relative",
         }}
       >
         AI-Assistant
@@ -290,7 +273,6 @@ function Assistant() {
             opacity: 0.85,
           }}
           onClick={handleClose}
-          title="Kapat"
         >
           <FiX size={22} />
         </span>
@@ -300,7 +282,7 @@ function Assistant() {
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: 16,
+          padding: 14,
           display: "flex",
           flexDirection: "column",
           gap: 8,
@@ -323,182 +305,117 @@ function Assistant() {
               alignItems: "center",
             }}
           >
-            {msg.isLoader ? (
-              // Basit loader veya animasyonlu:
-              <span
-                style={{
-                  letterSpacing: 3,
-                  fontWeight: 600,
-                  fontSize: 21,
-                }}
-              >
-                <DotLoader />
-              </span>
-            ) : (
-              msg.text
-            )}
+            {msg.isLoader ? <DotLoader /> : msg.text}
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Araç çubuğu */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 9,
-          padding: "4px 9px 4px 9px",
-          borderTop: "1px solid #e8eaf1",
-          background: "#f8fafc",
-        }}
-      >
-        {/* ... Web search ve Dosya Yükle butonları */}
-        <button
-          onClick={() =>
-            setActiveTool(activeTool === "search" ? null : "search")
-          }
-          style={{
-            background: activeTool === "search" ? "#fff" : "#f3f6fa",
-            border:
-              activeTool === "search"
-                ? "1.5px solid #0066ff"
-                : "1px solid #e1e6ef",
-            color: activeTool === "search" ? "#0066ff" : "#444",
-            padding: "4px 10px 4px 7px",
-            borderRadius: 7,
-            fontSize: 13.7,
-            display: "flex",
-            alignItems: "center",
-            fontWeight: 500,
-            boxShadow: activeTool === "search" ? "0 1px 4px #0066ff15" : "none",
-            cursor: "pointer",
-            transition: "all 0.15s",
-          }}
-          title="Web Search"
-        >
-          <FiSearch size={15} style={{ marginRight: 6 }} />
-          Web Search
-        </button>
-
-        <label
-          htmlFor="file-upload"
-          style={{
-            background: activeTool === "upload" ? "#fff" : "#f3f6fa",
-            border:
-              activeTool === "upload"
-                ? "1.5px solid #0066ff"
-                : "1px solid #e1e6ef",
-            color: activeTool === "upload" ? "#0066ff" : "#444",
-            padding: "4px 10px 4px 7px",
-            borderRadius: 7,
-            fontSize: 13.7,
-            display: "flex",
-            alignItems: "center",
-            fontWeight: 500,
-            boxShadow: activeTool === "upload" ? "0 1px 4px #0066ff15" : "none",
-            cursor: "pointer",
-            transition: "all 0.15s",
-          }}
-          title="Dosya Yükle"
-        >
-          <FiUpload size={15} style={{ marginRight: 6 }} />
-          Dosya Yükle
-          <input
-            id="file-upload"
-            type="file"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              setActiveTool("upload");
-              setSelectedFile(e.target.files?.[0]);
-            }}
-          />
-        </label>
-        {selectedFile && (
-          <span
+      {/* Tool & input */}
+      <div style={{ padding: 10, borderTop: "1px solid #e0e0e0" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+          <button
+            onClick={() => setActiveTool("search")}
             style={{
-              marginLeft: 3,
-              color: "#0066ff",
-              fontSize: 12.3,
-              fontWeight: 500,
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              padding: "6px 10px",
+              fontSize: 13,
+              borderRadius: 6,
+              background: activeTool === "search" ? "#0066ff" : "#f1f1f1",
+              color: activeTool === "search" ? "#fff" : "#333",
+              border: "none",
+              cursor: "pointer",
             }}
           >
-            {selectedFile.name}
-          </span>
-        )}
-      </div>
+            <FiSearch />
+            Web Search
+          </button>
 
-      {/* Input ve End Discussion */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          borderTop: "1px solid #eee",
-          background: "#fff",
-          padding: 8,
-          borderBottomLeftRadius: 16,
-          borderBottomRightRadius: 16,
-        }}
-      >
+          <label
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              padding: "6px 10px",
+              fontSize: 13,
+              borderRadius: 6,
+              background: activeTool === "upload" ? "#0066ff" : "#f1f1f1",
+              color: activeTool === "upload" ? "#fff" : "#333",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            <FiUpload />
+            Dosya Yükle
+            <input
+              type="file"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                setSelectedFile(e.target.files[0]);
+                setActiveTool("upload");
+              }}
+            />
+          </label>
+        </div>
+
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleInputKeyDown}
           disabled={loading}
-          rows={1}
-          placeholder="Asistan'a sorun."
+          placeholder="Asistan'a sorun..."
+          rows={2}
           style={{
-            flex: 1,
+            width: "100%",
             resize: "none",
-            border: "none",
-            outline: "none",
-            fontSize: 16,
-            padding: 10,
-            background: "#f8fafc",
             borderRadius: 8,
-            marginRight: 6,
+            padding: 8,
+            border: "1px solid #ccc",
+            fontSize: 14,
+            marginBottom: 8,
           }}
         />
-        <button
-          onClick={sendMessage}
-          disabled={loading || (!input.trim() && !selectedFile)}
-          style={{
-            background: "#0066ff",
-            color: "#fff",
-            border: "none",
-            borderRadius: "50%",
-            width: 36,
-            height: 36,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginLeft: 5,
-            cursor: loading ? "not-allowed" : "pointer",
-            boxShadow: "0 2px 8px #0066ff14",
-            fontSize: 21,
-            transition: "background 0.14s",
-          }}
-          title="Gönder"
+        <div
+          style={{ display: "flex", justifyContent: "space-between", gap: 8 }}
         >
-          <FiArrowRight size={20} />
-        </button>
-        {/* End Discussion */}
-        <button
-          onClick={handleEndDiscussion}
-          style={{
-            marginLeft: 9,
-            fontSize: 13,
-            color: "#555",
-            border: "1px solid #c0c4cc",
-            borderRadius: 7,
-            padding: "7px 13px",
-            background: "#f8fafc",
-            cursor: "pointer",
-            fontWeight: 500,
-          }}
-        >
-          End Discussion
-        </button>
+          <button
+            onClick={sendMessage}
+            disabled={loading}
+            style={{
+              flex: 1,
+              background: "#0066ff",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 0",
+              fontWeight: 500,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            Gönder
+          </button>
+          <button
+            onClick={handleEndDiscussion}
+            style={{
+              flex: 1,
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "8px 0",
+              fontSize: 14,
+              background: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            End Discussion
+          </button>
+        </div>
       </div>
     </div>
   );

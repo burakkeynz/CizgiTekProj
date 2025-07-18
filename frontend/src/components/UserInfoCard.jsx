@@ -1,7 +1,23 @@
+// src/components/UserInfoCard.js
+import { useEffect, useState } from "react";
+
 function UserInfoCard({ user, expiresIn }) {
-  // Kalan süreyi "mm:ss" formatına çevir
+  const [timeLeft, setTimeLeft] = useState(expiresIn);
+
+  useEffect(() => {
+    setTimeLeft(expiresIn);
+  }, [expiresIn]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!user) return null;
+
   const formatTime = (s) => {
-    if (s == null) return "--:--";
     const min = Math.floor(s / 60);
     const sec = s % 60;
     return `${min.toString().padStart(2, "0")}:${sec
@@ -9,10 +25,11 @@ function UserInfoCard({ user, expiresIn }) {
       .padStart(2, "0")}`;
   };
 
+  const fullName = `${user.role} ${user.first_name} ${user.last_name}`;
+
   return (
     <div
       style={{
-        width: "100%",
         padding: 22,
         borderBottom: "1.5px solid #e4e8ef",
         background: "#fff",
@@ -21,7 +38,6 @@ function UserInfoCard({ user, expiresIn }) {
         alignItems: "center",
       }}
     >
-      {/* Profil foto (placeholder, ileride user'dan eklenir) */}
       <div
         style={{
           width: 70,
@@ -37,13 +53,10 @@ function UserInfoCard({ user, expiresIn }) {
           color: "#0066ff",
         }}
       >
-        {user.first_name?.[0] || "U"}
+        {user.first_name?.[0]?.toUpperCase() || "U"}
       </div>
       <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 3 }}>
-        {user.username}
-      </div>
-      <div style={{ fontSize: 14, color: "#7da1d1", marginBottom: 6 }}>
-        {user.role}
+        {fullName}
       </div>
       <div
         style={{
@@ -55,9 +68,10 @@ function UserInfoCard({ user, expiresIn }) {
           color: "#0066ff",
         }}
       >
-        Token Süresi: {formatTime(expiresIn)}
+        {formatTime(timeLeft)}
       </div>
     </div>
   );
 }
+
 export default UserInfoCard;

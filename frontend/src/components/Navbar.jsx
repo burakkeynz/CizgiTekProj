@@ -7,11 +7,11 @@ function Navbar() {
 
   const handleLogout = async () => {
     try {
-      await api.post("/auth/logout");
+      await api.post("/auth/logout"); // cookie'yi server tarafında sil
     } catch (err) {
-      console.warn("Logout failed, but proceeding anyway.");
+      console.warn("Logout failed, proceeding anyway.");
     } finally {
-      navigate("/goodbye");
+      window.location.href = "/goodbye"; // artık cookie silinmiş olacak
     }
   };
 
