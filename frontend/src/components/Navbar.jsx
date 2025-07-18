@@ -5,14 +5,14 @@ import api from "../api";
 function Navbar() {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    api
-      .post("/auth/logout")
-      .catch(() => {}) // hata olsa da devam etsin
-      .finally(() => {
-        document.cookie = "access_token=; Max-Age=0; path=/;";
-        navigate("/goodbye");
-      });
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (err) {
+      console.warn("Logout failed, but proceeding anyway.");
+    } finally {
+      navigate("/goodbye");
+    }
   };
 
   return (

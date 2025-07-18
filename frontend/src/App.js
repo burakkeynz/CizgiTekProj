@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useEffect } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import useAuthCheck from "./hooks/useAuthCheck";
+
 import Navbar from "./components/Navbar";
 import Assistant from "./components/Assistant";
 import Main from "./components/Main";
@@ -11,41 +13,57 @@ import SessionExpired from "./components/SessionExpired";
 import Goodbye from "./components/Goodbye";
 
 function App() {
-  const [hasSession, setHasSession] = useState(null); // null = kontrol edilmedi
   const location = useLocation();
   const navigate = useNavigate();
+  const alreadyRedirected = useRef(false);
 
-  const isPublicRoute = [
-    "/login",
-    "/register",
-    "/session-expired",
-    "/goodbye",
-  ].includes(location.pathname);
+  const pathname = location.pathname;
+  const publicRoutes = ["/login", "/register", "/session-expired", "/goodbye"];
+  const isPublicRoute = publicRoutes.includes(pathname);
+  const shouldCheckSession = !isPublicRoute;
 
+  const hasSession = useAuthCheck(shouldCheckSession);
+
+  // route değişince yönlendirme sıfırlama
   useEffect(() => {
-    const cookies = document.cookie;
-    const hasAccessToken = cookies.includes("access_token=");
-    setHasSession(hasAccessToken);
+    alreadyRedirected.current = false;
+  }, [pathname]);
 
-    if (!hasAccessToken && !isPublicRoute) {
-      navigate("/session-expired");
+  // // Debug log
+  // useEffect(() => {
+  //   console.log("App.js RENDER");
+  //   console.log("Path:", pathname);
+  //   console.log("shouldCheckSession:", shouldCheckSession);
+  //   console.log("hasSession:", hasSession);
+  //   console.log("isPublicRoute:", isPublicRoute);
+  // }, [pathname, shouldCheckSession, hasSession, isPublicRoute]);
+
+  // oturum kontrolü tamamlandıysa yönlendiriyorum
+  useEffect(() => {
+    if (alreadyRedirected.current) return;
+
+    if (hasSession === false && shouldCheckSession) {
+      alreadyRedirected.current = true;
+      navigate("/session-expired", { replace: true });
+      return;
     }
 
-    if (hasAccessToken && isPublicRoute) {
-      navigate("/");
+    if (hasSession === true && isPublicRoute) {
+      alreadyRedirected.current = true;
+      navigate("/dashboard", { replace: true });
+      return;
     }
-  }, [location.pathname]);
+  }, [hasSession, isPublicRoute, shouldCheckSession, pathname, navigate]);
 
-  if (hasSession === null) {
-    return null; // ilk kontrol yapılana kadar bekle
-  }
+  // oturum kontrolü sürerken boş ekran göstertiyorum
+  if (shouldCheckSession && hasSession === null) return null;
 
-  const showLayout = hasSession && !isPublicRoute;
+  const showLayout = hasSession === true && !isPublicRoute;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
       {showLayout && <Navbar />}
-      <div style={{ flex: 1, minHeight: "100vh" }}>
+      <div style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<Main />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -61,7 +79,6 @@ function App() {
           style={{
             width: 360,
             minWidth: 320,
-            background: "#f8fafc",
             borderLeft: "1.5px solid #e4e8ef",
             boxShadow: "-1px 0 10px #dde1e6",
             display: "flex",

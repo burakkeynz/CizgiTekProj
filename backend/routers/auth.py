@@ -52,6 +52,23 @@ def create_token(username: str, user_id: int, role: str, expires_delta: timedelt
     payload.update({'exp': expires})
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
+def refresh_token(response: Response, username: str, user_id: int, role: str):
+    new_token = create_token(
+        username,
+        user_id,
+        role,
+        timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    response.set_cookie(
+        key="access_token",
+        value=new_token,
+        httponly=True,
+        secure=False,  # sonradanTrue olmalı
+        samesite="Lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    return new_token
+
 async def get_current_user_from_cookie(request: Request):
     token = request.cookies.get("access_token")
     if not token:
@@ -70,57 +87,43 @@ async def get_current_user_from_cookie(request: Request):
                 detail='Could not validate credentials'
             )
         return {'username': username, 'id': user_id, 'role': user_role}
-    except JWTError:
+    except JWTError as e:
+        print(f"JWT decode failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Could not validate credentials'
         )
 
 @router.get("/me")
-async def get_me(request: Request, response: Response):
-    token = request.cookies.get("access_token")
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated"
-        )
+async def get_me(
+    request: Request,
+    response: Response,
+    user_data: dict = Depends(get_current_user_from_cookie)
+):
+    new_token = refresh_token(
+        response,
+        user_data["username"],
+        user_data["id"],
+        user_data["role"]
+    )
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get('sub')
-        user_id = payload.get('id')
-        user_role = payload.get('role')
-        # Her f5 te yeni token üretiliyor
-        new_token = create_token(
-            username,
-            user_id,
-            user_role,
-            timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
-        response.set_cookie(
-            key="access_token",
-            value=new_token,
-            httponly=True,
-            secure=False,  # localde false kalabilir ama sonradan True olmalı
-            samesite="Lax",
-            max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
-        )
-       
-        new_payload = jwt.decode(new_token, SECRET_KEY, algorithms=[ALGORITHM])
-        exp = new_payload.get('exp')
+        payload = jwt.decode(new_token, SECRET_KEY, algorithms=[ALGORITHM])
         now = datetime.now(timezone.utc).timestamp()
-        expires_in = int(exp - now)
-        return {
-            'username': username,
-            'id': user_id,
-            'role': user_role,
-            'expires_in': expires_in
-        }
-    except JWTError:
+        expires_in = int(payload["exp"] - now)
+    except JWTError as e:
+        print(f"Token decode hatası (yeniden): {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Could not validate credentials'
+            detail="Could not decode refreshed token"
         )
 
+    return {
+        "username": user_data["username"],
+        "id": user_data["id"],
+        "role": user_data["role"],
+        "expires_in": expires_in
+    }
 
 def authenticate_user(username: str, password: str, db):
     user = db.query(Users).filter(Users.username == username).first()
@@ -154,7 +157,6 @@ async def login_token(form_data: form_dependency, db: db_dependency, response: R
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Credentials Err'
         )
-    expires = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     access_token = create_token(
         user.username,
@@ -167,7 +169,7 @@ async def login_token(form_data: form_dependency, db: db_dependency, response: R
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False, #For development mode, I made this intentionally False, it should be true when we use https://
+        secure=False,  # sonradan True olacak
         samesite="Lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
