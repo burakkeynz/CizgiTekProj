@@ -9,17 +9,14 @@ function getFirstQuestionAnswer(messages) {
       m.text !== "Merhaba! Size nasıl yardımcı olabilirim?"
   );
 
-  // İlk user mesajının indexi
   const firstUserIdx = filtered.findIndex((m) => m.role === "user");
   const firstQ = firstUserIdx !== -1 ? filtered[firstUserIdx]?.text : "";
 
-  // İlk user'dan sonra gelen ilk model mesajı
   const firstAObj = filtered.find(
     (m, i) => m.role === "model" && i > firstUserIdx
   );
   const firstA = firstAObj?.text || "";
 
-  // İlk user ve ona denk gelen ilk model sonrası başka user/model mesajı varsa ... göster
   let hasMore = false;
   if (firstUserIdx !== -1) {
     const afterFirstAIdx =
@@ -68,10 +65,20 @@ function Logs({ logs, onDelete }) {
         .log-card {
           transition: box-shadow .15s, background .12s;
           cursor: pointer;
+          background: #fafdff;
+          border: 1.2px solid #e4e9f3;
+          border-radius: 18px;
+          box-shadow: 0 2px 16px #dde5fa23;
+          padding: 22px;
+          min-width: 320px;
+          max-width: 740px;
+          font-size: 16px;
+          position: relative;
+          user-select: none;
         }
         .log-card:hover {
-          box-shadow: 0 6px 20px #b8c3d733;
           background: #f1f6fc;
+          box-shadow: 0 6px 20px #b8c3d733;
         }
         .log-delete-btn {
           transition: background .13s;
@@ -80,11 +87,30 @@ function Logs({ logs, onDelete }) {
           background: #fbe4e4;
         }
         .log-more {
-          color: #7a879a;
-          font-size: 22px;
+          color: #b3b8c5;
+          font-size: 21px;
           text-align: center;
-          letter-spacing: 5px;
-          margin-top: 6px;
+          letter-spacing: 6px;
+          margin-top: 8px;
+          font-weight: 700;
+        }
+        .log-q-label {
+          color: #1853c0;
+          font-weight: 600;
+        }
+        .log-q-text {
+          color: #234178;
+          font-weight: 500;
+          margin-left: 8px;
+        }
+        .log-a-label {
+          color: #12796e;
+          font-weight: 600;
+        }
+        .log-a-text {
+          color: #2d3e53;
+          font-weight: 500;
+          margin-left: 8px;
         }
         `}
       </style>
@@ -94,6 +120,7 @@ function Logs({ logs, onDelete }) {
           padding: 32,
           height: "100vh",
           overflowY: "auto",
+          background: "#f8fafc",
         }}
       >
         <h2
@@ -121,19 +148,6 @@ function Logs({ logs, onDelete }) {
                 key={log.id}
                 onClick={() => navigate("/logs/" + log.id)}
                 className="log-card"
-                style={{
-                  background: "#fafdff",
-                  border: "1.2px solid #e4e9f3",
-                  borderRadius: 18,
-                  boxShadow: "0 2px 16px #dde5fa23",
-                  padding: 22,
-                  minWidth: 320,
-                  maxWidth: 740,
-                  fontSize: 16,
-                  position: "relative",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ")
@@ -146,12 +160,11 @@ function Logs({ logs, onDelete }) {
                     alignItems: "center",
                     marginBottom: 4,
                   }}
-                  // Sil butonu dışında detay açılmasın diye tıklamayı engelle
                   onClick={(e) => e.stopPropagation()}
                 >
                   <span
                     style={{
-                      color: "#2273c5",
+                      color: "#1853c0",
                       fontWeight: 600,
                       fontSize: 16,
                       letterSpacing: 0.1,
@@ -159,7 +172,11 @@ function Logs({ logs, onDelete }) {
                   >
                     {idx + 1} -{" "}
                     <span
-                      style={{ textDecoration: "underline", fontWeight: 500 }}
+                      style={{
+                        textDecoration: "underline",
+                        fontWeight: 500,
+                        color: "#1a2e46",
+                      }}
                     >
                       {firstQ?.substring(0, 32) || "Soru yok"}
                       {firstQ.length > 32 ? "..." : ""}
@@ -198,24 +215,12 @@ function Logs({ logs, onDelete }) {
                   </button>
                 </div>
                 <div style={{ marginTop: 12 }}>
-                  <span style={{ color: "#2273c5", fontWeight: 500 }}>
-                    Soru:
-                  </span>
-                  <span
-                    style={{ color: "#23272f", fontWeight: 400, marginLeft: 8 }}
-                  >
-                    {firstQ}
-                  </span>
+                  <span className="log-q-label">Soru:</span>
+                  <span className="log-q-text">{firstQ}</span>
                 </div>
                 <div style={{ marginTop: 8 }}>
-                  <span style={{ color: "#2273c5", fontWeight: 500 }}>
-                    Cevap:
-                  </span>
-                  <span
-                    style={{ color: "#24446b", fontWeight: 400, marginLeft: 8 }}
-                  >
-                    {firstA}
-                  </span>
+                  <span className="log-a-label">Cevap:</span>
+                  <span className="log-a-text">{firstA}</span>
                 </div>
                 {hasMore && <div className="log-more">...</div>}
               </div>

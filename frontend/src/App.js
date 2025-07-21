@@ -12,7 +12,7 @@ import Login from "./components/Login";
 import Register from "./components/Register";
 import SessionExpired from "./components/SessionExpired";
 import Goodbye from "./components/Goodbye";
-import ChatLogDetail from "./components/ChatLogDetail"; // YENİ!
+import ChatLogDetail from "./components/ChatLogDetail";
 import api from "./api";
 
 function App() {
@@ -44,8 +44,14 @@ function App() {
   };
 
   const handleDelete = async (id) => {
-    await api.delete(`/chatlogs/${id}`);
-    setLogs((prev) => prev.filter((log) => log.id !== id));
+    if (typeof id === "string" && id.startsWith("temp-")) {
+      setLogs((prev) => prev.filter((log) => log.id !== id));
+      return;
+    }
+    try {
+      await api.delete(`/chatlogs/${id}`);
+      setLogs((prev) => prev.filter((log) => log.id !== id));
+    } catch (e) {}
   };
 
   useEffect(() => {
