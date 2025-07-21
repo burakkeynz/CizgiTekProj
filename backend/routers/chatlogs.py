@@ -67,3 +67,20 @@ def get_chat_log_by_id(
     if not log:
         raise HTTPException(status_code=404, detail="Chat log not found")
     return log
+
+@router.delete("/{log_id}", status_code=204)
+def delete_chat_log(
+    log_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user_from_cookie)
+):
+    if not user or not user.get("id"):
+        raise HTTPException(status_code=401, detail="Authentication failed")
+    log = db.query(AssistantChatLog).filter(
+        AssistantChatLog.id == log_id, AssistantChatLog.user_id == user["id"]
+    ).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Chat log not found")
+    db.delete(log)
+    db.commit()
+    return

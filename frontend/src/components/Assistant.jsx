@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FiSearch, FiUpload, FiArrowRight, FiX } from "react-icons/fi";
+import { FiSearch, FiUpload, FiX } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 
@@ -19,28 +19,17 @@ function DotLoader() {
       <span className="dot">.</span>
       <style>
         {`
-          .dot {
-            animation: blink 1.4s infinite both;
-            font-size: 22px;
-          }
-          .dot:nth-child(2) {
-            animation-delay: .2s;
-          }
-          .dot:nth-child(3) {
-            animation-delay: .4s;
-          }
-          @keyframes blink {
-            0% { opacity: .1; }
-            20% { opacity: 1; }
-            100% { opacity: .1; }
-          }
+          .dot { animation: blink 1.4s infinite both; font-size: 22px; }
+          .dot:nth-child(2) { animation-delay: .2s; }
+          .dot:nth-child(3) { animation-delay: .4s; }
+          @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
         `}
       </style>
     </span>
   );
 }
 
-function Assistant() {
+function Assistant({ onNewLog }) {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(() => {
     try {
@@ -65,7 +54,6 @@ function Assistant() {
   });
 
   useEffect(() => {
-    // sayfa geçişinde kapansın
     setIsOpen(false);
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
   }, [location]);
@@ -88,42 +76,20 @@ function Assistant() {
 
   const handleClose = () => setIsOpen(false);
 
-  if (!isOpen) {
-    return (
-      <div
-        style={{
-          position: "absolute",
-          bottom: 24,
-          right: 32,
-          zIndex: 50,
-          cursor: "pointer",
-          background: "#0066ff",
-          color: "#fff",
-          borderRadius: "50%",
-          width: 54,
-          height: 54,
-          boxShadow: "0 3px 18px #0066ff33",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 32,
-          fontWeight: "bold",
-        }}
-        onClick={() => setIsOpen(true)}
-        title="AI Asistan'ı aç"
-      >
-        💬
-      </div>
-    );
-  }
-
   const handleEndDiscussion = async () => {
     try {
       const logs = sessionStorage.getItem(SESSION_KEY);
       if (logs && JSON.parse(logs).length > 1) {
-        await api.post("/chatlogs/", {
+        const newLog = {
+          id: "temp-" + Date.now(),
           messages: JSON.parse(logs),
-          ended_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          optimistic: true,
+        };
+        if (onNewLog) onNewLog(newLog);
+        api.post("/chatlogs/", {
+          messages: newLog.messages,
+          ended_at: newLog.created_at,
         });
       }
     } catch (e) {
@@ -234,6 +200,35 @@ function Assistant() {
       sendMessage();
     }
   };
+
+  if (!isOpen) {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          bottom: 24,
+          right: 32,
+          zIndex: 50,
+          cursor: "pointer",
+          background: "#0066ff",
+          color: "#fff",
+          borderRadius: "50%",
+          width: 54,
+          height: 54,
+          boxShadow: "0 3px 18px #0066ff33",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 32,
+          fontWeight: "bold",
+        }}
+        onClick={() => setIsOpen(true)}
+        title="AI Asistan'ı aç"
+      >
+        💬
+      </div>
+    );
+  }
 
   return (
     <div

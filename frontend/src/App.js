@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import useAuthCheck from "./hooks/useAuthCheck";
 
@@ -12,6 +12,8 @@ import Login from "./components/Login";
 import Register from "./components/Register";
 import SessionExpired from "./components/SessionExpired";
 import Goodbye from "./components/Goodbye";
+import ChatLogDetail from "./components/ChatLogDetail"; // YENİ!
+import api from "./api";
 
 function App() {
   const location = useLocation();
@@ -20,7 +22,6 @@ function App() {
 
   const pathname = location.pathname;
 
-  // ✅ goodbye sayfası kontrol dışı bırakıldı
   const authCheckRoutes = [
     "/login",
     "/register",
@@ -33,14 +34,32 @@ function App() {
   const { hasSession, user, expiresIn, expired } =
     useAuthCheck(shouldCheckSession);
 
+  const [logs, setLogs] = useState([]);
   useEffect(() => {
     alreadyRedirected.current = false;
   }, [pathname]);
 
+  const handleNewLog = (log) => {
+    setLogs((prev) => [log, ...prev]);
+  };
+
+  const handleDelete = async (id) => {
+    await api.delete(`/chatlogs/${id}`);
+    setLogs((prev) => prev.filter((log) => log.id !== id));
+  };
+
+  useEffect(() => {
+    if (hasSession) {
+      api
+        .get("/chatlogs/")
+        .then((res) => setLogs(res.data))
+        .catch(() => {});
+    }
+  }, [hasSession]);
+
   useEffect(() => {
     if (alreadyRedirected.current) return;
 
-    // ⛔️ Goodbye sayfasında yönlendirme yapılmasın
     if (hasSession === false && shouldCheckSession) {
       alreadyRedirected.current = true;
 
@@ -53,7 +72,6 @@ function App() {
       return;
     }
 
-    // ✅ sadece login/register’daysan yönlendir (goodbye değil!)
     if (
       hasSession === true &&
       (pathname === "/login" || pathname === "/register")
@@ -63,9 +81,7 @@ function App() {
     }
   }, [hasSession, shouldCheckSession, pathname, expired, navigate]);
 
-  // auth durumu belli değilse hiçbir şey render etme
   if (hasSession === null) return null;
-
   const showLayout = hasSession === true && !isPublicRoute;
 
   return (
@@ -75,7 +91,11 @@ function App() {
         <Routes>
           <Route path="/" element={<Main />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/logs" element={<Logs />} />
+          <Route
+            path="/logs"
+            element={<Logs logs={logs} onDelete={handleDelete} />}
+          />
+          <Route path="/logs/:id" element={<ChatLogDetail logs={logs} />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/session-expired" element={<SessionExpired />} />
@@ -96,7 +116,7 @@ function App() {
           }}
         >
           {user && <UserInfoCard user={user} expiresIn={expiresIn} />}
-          <Assistant />
+          <Assistant onNewLog={handleNewLog} />
         </div>
       )}
     </div>
