@@ -13,6 +13,11 @@ import Register from "./components/Register";
 import SessionExpired from "./components/SessionExpired";
 import Goodbye from "./components/Goodbye";
 import ChatLogDetail from "./components/ChatLogDetail";
+import Patients from "./components/Patients"; // yeni
+import Sessions from "./components/Sessions"; // yeni
+import Chat from "./components/Chat"; // yeni
+import Settings from "./components/Settings"; // yeni
+import PatientDetail from "./components/PatientDetail";
 import api from "./api";
 
 function App() {
@@ -97,6 +102,10 @@ function App() {
         <Routes>
           <Route path="/" element={<Main />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/patients" element={<Patients />} />
+          <Route path="/sessions" element={<Sessions />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/settings" element={<Settings />} />
           <Route
             path="/logs"
             element={<Logs logs={logs} onDelete={handleDelete} />}
@@ -106,6 +115,7 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/session-expired" element={<SessionExpired />} />
           <Route path="/goodbye" element={<Goodbye />} />
+          <Route path="/patients/:id" element={<PatientDetail />} />
         </Routes>
       </div>
       {showLayout && (

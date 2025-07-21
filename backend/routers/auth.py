@@ -19,6 +19,10 @@ ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 router = APIRouter(prefix='/auth', tags=['auth'])
 
+class LocationUpdateRequest(BaseModel):
+    lat: float
+    lon: float
+    
 class CreateUserRequest(BaseModel):
     username: str
     email: str
@@ -181,3 +185,4 @@ async def login_token(
 async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
     return {"message": "Logged out successfully"}
+
