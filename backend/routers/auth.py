@@ -127,6 +127,7 @@ async def get_me(
         "expires_in": expires_in
     }
 
+
 def authenticate_user(username: str, password: str, db):
     user = db.query(Users).filter(Users.username == username).first()
     if not user:

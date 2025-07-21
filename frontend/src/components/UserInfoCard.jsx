@@ -1,4 +1,3 @@
-// src/components/UserInfoCard.js
 import { useEffect, useState } from "react";
 
 function UserInfoCard({ user, expiresIn }) {
@@ -6,14 +5,23 @@ function UserInfoCard({ user, expiresIn }) {
 
   useEffect(() => {
     setTimeLeft(expiresIn);
-  }, [expiresIn]);
+    if (!expiresIn || expiresIn <= 0) return;
 
-  useEffect(() => {
+    // 1. Tam expire anında yönlendirme!
+    const timeout = setTimeout(() => {
+      window.location.href = "/session-expired";
+    }, expiresIn * 1000);
+
+    // 2. Geriye sayan countdown
     const interval = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [expiresIn]);
 
   if (!user) return null;
 

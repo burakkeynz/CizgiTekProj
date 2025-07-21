@@ -1,4 +1,12 @@
+import { useEffect } from "react";
+import api from "../api";
+
 function SessionExpired() {
+  useEffect(() => {
+    // Sayfa açılır açılmaz cookie'yi temizle
+    api.post("/auth/logout").catch(() => {});
+  }, []);
+
   return (
     <div
       style={{
@@ -45,4 +53,5 @@ function SessionExpired() {
     </div>
   );
 }
+
 export default SessionExpired;
