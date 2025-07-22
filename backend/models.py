@@ -13,7 +13,7 @@ class Users(Base):
   last_name = Column(String(length=100))
   hashed_password = Column(String(length=255))
   role= Column(String(length=50))
-  
+  status = Column(String(length=20), default="offline")
 
 class AssistantChatLog(Base):
     __tablename__ = "assistant_chat_logs"

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FiSearch, FiUpload, FiX } from "react-icons/fi";
+import { FiSearch, FiUpload, FiX, FiFile, FiEye } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 import { useTheme } from "./ThemeContext";
@@ -8,6 +8,70 @@ const SESSION_KEY = "ai_assistang_logs:";
 const INITIAL_MSG = [
   { role: "model", text: "Merhaba! Size nasıl yardımcı olabilirim?" },
 ];
+
+// Dosya tipine göre preview komponenti
+function FilePreview({ fileType, fileUrl, fileName }) {
+  if (!fileUrl) return null;
+  if (fileType === "application/pdf") {
+    return (
+      <iframe
+        src={fileUrl}
+        title={fileName}
+        width="100%"
+        height={400}
+        style={{ border: "none", borderRadius: 10 }}
+      />
+    );
+  }
+  if (
+    fileType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    fileType === "application/vnd.ms-excel" ||
+    fileType === "text/csv"
+  ) {
+    // Google Docs Viewer (public url olmalı!)
+    return (
+      <iframe
+        src={`https://docs.google.com/gview?url=${encodeURIComponent(
+          fileUrl
+        )}&embedded=true`}
+        title={fileName}
+        width="100%"
+        height={400}
+        style={{ border: "none", borderRadius: 10 }}
+      />
+    );
+  }
+  if (fileType.startsWith("image/")) {
+    return (
+      <img
+        src={fileUrl}
+        alt={fileName}
+        style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 10 }}
+      />
+    );
+  }
+  return (
+    <div style={{ padding: 32, textAlign: "center" }}>
+      <FiFile size={32} style={{ opacity: 0.5 }} />
+      <div style={{ color: "#999", fontSize: 15 }}>{fileName}</div>
+      <a
+        href={fileUrl}
+        download={fileName}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          marginTop: 8,
+          display: "inline-block",
+          color: "#007bff",
+          textDecoration: "underline",
+        }}
+      >
+        Dosyayı indir
+      </a>
+    </div>
+  );
+}
 
 function DotLoader() {
   return (
@@ -49,6 +113,9 @@ function Assistant({ onNewLog }) {
     }
   });
 
+  // Dosya önizleme için modal state
+  const [preview, setPreview] = useState(null);
+
   useEffect(() => {
     setIsOpen(false);
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
@@ -58,6 +125,7 @@ function Assistant({ onNewLog }) {
   const [loading, setLoading] = useState(false);
   const [activeTool, setActiveTool] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFileUrl, setSelectedFileUrl] = useState(null);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -71,6 +139,17 @@ function Assistant({ onNewLog }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
+  useEffect(() => {
+    if (selectedFile) {
+      setSelectedFileUrl(URL.createObjectURL(selectedFile));
+    } else {
+      setSelectedFileUrl(null);
+    }
+    return () => {
+      if (selectedFileUrl) URL.revokeObjectURL(selectedFileUrl);
+    };
+    // eslint-disable-next-line
+  }, [selectedFile]);
 
   const handleClose = () => setIsOpen(false);
 
@@ -102,75 +181,36 @@ function Assistant({ onNewLog }) {
     if (loading || (!input.trim() && !selectedFile)) return;
     setLoading(true);
 
-    let userMsg;
-    let updatedMessages = [...messages];
-
-    if (activeTool === "upload" && selectedFile) {
-      const file = selectedFile;
-      const fileBytes = await file.arrayBuffer();
-      const base64Data = btoa(
-        new Uint8Array(fileBytes).reduce(
-          (data, byte) => data + String.fromCharCode(byte),
-          ""
-        )
-      );
-      userMsg = {
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              mimeType: file.type,
-              data: base64Data,
-            },
-          },
-        ],
-      };
-      if (input.trim()) {
-        userMsg.parts.push({ text: input });
-      }
-      setSelectedFile(null);
-      setInput("");
-    } else {
-      userMsg = {
-        role: "user",
-        parts: [{ text: input }],
-      };
-      setInput("");
-    }
-
-    const contents = updatedMessages.map((msg) =>
-      msg.role === "user" || msg.role === "model"
-        ? {
-            role: msg.role,
-            parts: msg.parts ? msg.parts : [{ text: msg.text }],
-          }
-        : msg
-    );
-    contents.push(userMsg);
+    // Kullanıcı mesajını dosya varsa fileUrl ile ekle (blob url)
+    const userMsg = {
+      role: "user",
+      text: input,
+      fileName: selectedFile ? selectedFile.name : null,
+      fileType: selectedFile ? selectedFile.type : null,
+      fileUrl: selectedFileUrl, // frontend'de preview için blob url
+    };
 
     setMessages([
-      ...updatedMessages,
-      {
-        role: "user",
-        text: input || (selectedFile && selectedFile.name) || "Dosya",
-        ...(userMsg.parts && { parts: userMsg.parts }),
-      },
-      {
-        role: "model",
-        text: "...",
-        isLoader: true,
-      },
+      ...messages,
+      userMsg,
+      { role: "model", text: "...", isLoader: true },
     ]);
 
+    const formData = new FormData();
+    formData.append("message", input || "");
+    if (selectedFile) formData.append("file", selectedFile);
+    formData.append("web_search", activeTool === "search" ? "true" : "false");
+    formData.append("contents", JSON.stringify(messages));
+
+    setInput("");
+    setSelectedFile(null);
+
     try {
-      let payload = { contents };
-      if (activeTool === "search") {
-        payload.web_search = true;
-      }
-      const res = await api.post("/gemini/chat", payload);
+      const res = await api.post("/gemini/chat", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       const responseText =
         res.data?.response || res.data?.raw_response || "Yanıt yok";
-
       setMessages((msgs) => {
         const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
         return [...msgsWithoutLoader, { role: "model", text: responseText }];
@@ -300,7 +340,8 @@ function Assistant({ onNewLog }) {
               fontSize: 15,
               minHeight: msg.isLoader ? 28 : undefined,
               display: "flex",
-              alignItems: "center",
+              flexDirection: "column",
+              alignItems: "flex-start",
               boxShadow:
                 msg.role === "user" ? "0 1px 4px var(--shadow-card)" : "none",
               border:
@@ -308,14 +349,144 @@ function Assistant({ onNewLog }) {
                   ? "1px solid var(--accent-color)"
                   : "1px solid var(--input-border)",
               transition: "background 0.2s, color 0.2s",
+              position: "relative",
             }}
           >
+            {/* Kullanıcı dosya eklediyse göster */}
+            {msg.fileName && (
+              <div
+                className="file-badge"
+                style={{
+                  background: "rgba(255,255,255,0.11)",
+                  color: "#fff",
+                  borderRadius: 7,
+                  padding: "5px 10px",
+                  fontSize: 13,
+                  marginBottom: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                  border: "1.2px solid #fff2",
+                  transition: "background 0.18s",
+                  position: "relative",
+                  minWidth: 130,
+                }}
+                title="Dosyayı önizle"
+                onClick={() =>
+                  setPreview({
+                    fileType: msg.fileType,
+                    fileUrl: msg.fileUrl,
+                    fileName: msg.fileName,
+                  })
+                }
+                onMouseEnter={(e) =>
+                  e.currentTarget.classList.add("file-badge-hover")
+                }
+                onMouseLeave={(e) =>
+                  e.currentTarget.classList.remove("file-badge-hover")
+                }
+              >
+                <FiFile style={{ marginRight: 3, opacity: 0.95 }} />
+                <span
+                  style={{
+                    maxWidth: 100,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {msg.fileName}
+                </span>
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontSize: 12,
+                    opacity: 0.85,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  className="preview-hover-label"
+                >
+                  <FiEye size={13} style={{ marginRight: 2 }} /> Aç
+                </span>
+                <style>
+                  {`
+                  .file-badge-hover {
+                    background: #fff2;
+                    border-color: var(--accent-color);
+                  }
+                  .file-badge-hover .preview-hover-label {
+                    color: var(--accent-color);
+                  }
+                  `}
+                </style>
+              </div>
+            )}
             {msg.isLoader ? <DotLoader /> : msg.text}
           </div>
         ))}
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Preview modalı (tıklayınca açılır) */}
+      {preview && (
+        <div
+          style={{
+            position: "fixed",
+            left: 0,
+            top: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(12,12,18,0.70)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            transition: "background 0.2s",
+          }}
+          onClick={() => setPreview(null)}
+        >
+          <div
+            style={{
+              background: "#232335",
+              borderRadius: 14,
+              minWidth: 360,
+              maxWidth: "90vw",
+              maxHeight: "90vh",
+              overflow: "auto",
+              padding: 24,
+              position: "relative",
+              boxShadow: "0 8px 32px #0005",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 24,
+                color: "#fff",
+                fontSize: 26,
+                cursor: "pointer",
+                opacity: 0.8,
+                zIndex: 2,
+              }}
+              title="Kapat"
+              onClick={() => setPreview(null)}
+            >
+              <FiX />
+            </span>
+            <FilePreview
+              fileType={preview.fileType}
+              fileUrl={preview.fileUrl}
+              fileName={preview.fileName}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Input area */}
       <div
         style={{
           padding: 10,
@@ -327,7 +498,9 @@ function Assistant({ onNewLog }) {
       >
         <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
           <button
-            onClick={() => setActiveTool("search")}
+            onClick={() =>
+              setActiveTool((prev) => (prev === "search" ? null : "search"))
+            }
             style={{
               flex: 1,
               display: "flex",
@@ -353,6 +526,7 @@ function Assistant({ onNewLog }) {
           </button>
 
           <label
+            htmlFor="file-upload"
             style={{
               flex: 1,
               display: "flex",
@@ -371,11 +545,13 @@ function Assistant({ onNewLog }) {
               cursor: "pointer",
               fontWeight: 500,
               transition: "background 0.18s, color 0.18s",
+              position: "relative",
             }}
           >
             <FiUpload />
-            Dosya Yükle
+            Add photos & files
             <input
+              id="file-upload"
               type="file"
               style={{ display: "none" }}
               onChange={(e) => {
@@ -385,6 +561,50 @@ function Assistant({ onNewLog }) {
             />
           </label>
         </div>
+
+        {/* Seçilen dosya varsa göster */}
+        {selectedFile && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: "var(--input-bg)",
+              border: "1px solid var(--input-border)",
+              borderRadius: 6,
+              padding: "6px 12px",
+              marginBottom: 8,
+              fontSize: 13,
+              color: "var(--text-main)",
+            }}
+          >
+            <span
+              style={{
+                maxWidth: 160,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {selectedFile.name}
+            </span>
+            <span
+              style={{
+                marginLeft: 6,
+                cursor: "pointer",
+                opacity: 0.7,
+                fontSize: 16,
+              }}
+              onClick={() => {
+                setSelectedFile(null);
+                setActiveTool(null);
+              }}
+              title="Dosyayı kaldır"
+            >
+              <FiX />
+            </span>
+          </div>
+        )}
 
         <textarea
           value={input}
@@ -397,13 +617,15 @@ function Assistant({ onNewLog }) {
             width: "100%",
             resize: "none",
             borderRadius: 8,
-            padding: 8,
-            border: "1px solid var(--input-border)",
+            padding: "10px 12px",
+            border: "1.5px solid var(--input-border)",
             fontSize: 14,
             marginBottom: 8,
             background: "var(--input-bg)",
             color: "var(--text-main)",
-            transition: "background 0.18s, color 0.18s",
+            fontFamily: "inherit",
+            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
+            transition: "all 0.18s",
           }}
         />
         <div

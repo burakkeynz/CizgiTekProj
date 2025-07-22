@@ -11,10 +11,143 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+function BloodTestCard({ data }) {
+  return (
+    <div style={styles.card}>
+      <h3 style={styles.cardTitle}>Kan Değeri Geçmişi</h3>
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-card)" />
+          <XAxis dataKey="date" stroke="var(--text-muted)" />
+          <YAxis stroke="var(--text-muted)" />
+          <Tooltip
+            contentStyle={{
+              background: "var(--card-bg)",
+              color: "var(--text-main)",
+              borderRadius: 8,
+              border: "1px solid var(--border-card)",
+              boxShadow: "var(--shadow-card)",
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="var(--accent-hover)"
+            strokeWidth={3}
+            isAnimationActive={false}
+            dot={{ stroke: "var(--accent-hover)", strokeWidth: 2 }}
+            activeDot={{ r: 7 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CardiologyCard({ selectedId, setSelectedId, data }) {
+  return (
+    <div style={styles.card}>
+      <h3 style={styles.cardTitle}>Kardiyoloji Özetleri</h3>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          maxHeight: 220,
+          overflowY: "auto",
+        }}
+      >
+        {data.map((item) => {
+          const isSelected = selectedId === item.id;
+          return (
+            <div
+              key={item.id}
+              onClick={() => setSelectedId(isSelected ? null : item.id)}
+              style={{
+                cursor: "pointer",
+                padding: 12,
+                borderRadius: 10,
+                background: isSelected
+                  ? "var(--accent-hover)"
+                  : "var(--bg-muted)",
+                color: isSelected ? "white" : "var(--text-main)",
+                boxShadow: isSelected ? "var(--shadow-strong)" : "none",
+                transition: "all 0.3s ease",
+                fontWeight: 600,
+                fontSize: isSelected ? 17 : 14,
+                userSelect: "none",
+              }}
+              title={`${item.title} - ${item.date}`}
+            >
+              <div>{item.title}</div>
+              <div
+                style={{
+                  marginTop: 6,
+                  fontWeight: 400,
+                  fontSize: 13,
+                  maxHeight: isSelected ? 90 : 40,
+                  overflow: "hidden",
+                }}
+              >
+                {item.summary}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RadiologyCards({ selectedId, setSelectedId, data }) {
+  return (
+    <div style={styles.card}>
+      <h3 style={styles.cardTitle}>Radyoloji Görüntüleri</h3>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {data.map((item) => {
+          const isSelected = selectedId === item.id;
+          return (
+            <div
+              key={item.id}
+              onClick={() => setSelectedId(isSelected ? null : item.id)}
+              style={{
+                cursor: "pointer",
+                flex: "1 0 100px",
+                height: isSelected ? 120 : 80,
+                borderRadius: 12,
+                background: isSelected
+                  ? "var(--accent-hover)"
+                  : "var(--bg-muted)",
+                color: isSelected ? "white" : "var(--text-main)",
+                boxShadow: isSelected ? "var(--shadow-strong)" : "none",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontWeight: 600,
+                fontSize: isSelected ? 16 : 13,
+                transition: "all 0.3s ease",
+                userSelect: "none",
+                textAlign: "center",
+                padding: 10,
+              }}
+              title={`${item.type} - ${item.date}`}
+            >
+              {item.type}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PatientDetail() {
   const { id } = useParams();
   const [patient, setPatient] = useState(null);
   const navigate = useNavigate();
+
+  const [selectedCardiology, setSelectedCardiology] = useState(null);
+  const [selectedRadiology, setSelectedRadiology] = useState(null);
 
   useEffect(() => {
     api
@@ -23,7 +156,7 @@ export default function PatientDetail() {
       .catch(() => navigate("/patients"));
   }, [id, navigate]);
 
-  const chartData = useMemo(
+  const bloodTestData = useMemo(
     () => [
       { date: "2024-03", value: 5.1 },
       { date: "2024-04", value: 5.6 },
@@ -34,25 +167,51 @@ export default function PatientDetail() {
     []
   );
 
+  const cardiologySummaries = [
+    {
+      id: 1,
+      title: "EKG",
+      date: "2024-07-01",
+      summary: "Normal sinüs ritmi, taşikardi yok.",
+    },
+    {
+      id: 2,
+      title: "Efor Testi",
+      date: "2024-07-10",
+      summary: "Hafif egzersizle taşikardi, negatif iskemik bulgu.",
+    },
+  ];
+
+  const radiologyImages = [
+    { id: 1, type: "MR", date: "2024-05-12" },
+    { id: 2, type: "BT", date: "2024-06-01" },
+    { id: 3, type: "Röntgen", date: "2024-06-15" },
+  ];
+
   if (!patient) return <div>Yükleniyor...</div>;
 
   return (
     <div
       style={{
-        maxWidth: 680,
-        margin: "40px auto 0",
+        maxWidth: 980,
+        margin: "40px auto",
+        padding: 20,
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gridTemplateRows: "auto auto",
+        gap: 20,
         background: "var(--card-bg)",
         borderRadius: 18,
         boxShadow: "var(--shadow-card)",
-        padding: "40px 36px 32px 36px",
         transition: "background 0.2s, color 0.2s",
       }}
     >
       <button
         onClick={() => navigate("/patients")}
         style={{
-          marginBottom: 18,
-          padding: "5px 16px",
+          gridColumn: "1 / span 2",
+          justifySelf: "start",
+          padding: "6px 18px",
           fontSize: 15,
           background: "var(--accent-muted)",
           color: "var(--accent-hover)",
@@ -61,104 +220,49 @@ export default function PatientDetail() {
           cursor: "pointer",
           fontWeight: 500,
           transition: "background 0.2s, color 0.2s",
+          marginBottom: 12,
         }}
       >
         ← Geri
       </button>
-      <h2
-        style={{
-          fontSize: 28,
-          fontWeight: 700,
-          marginBottom: 16,
-          color: "var(--accent-hover)",
-          letterSpacing: ".5px",
-        }}
-      >
-        {patient.first_name} {patient.last_name}
-      </h2>
-      <div
-        style={{
-          marginBottom: 28,
-          padding: "22px 24px",
-          background: "var(--bg-muted)",
-          borderRadius: 12,
-          transition: "background 0.2s",
-        }}
-      >
-        <ul
-          style={{
-            listStyle: "none",
-            padding: 0,
-            margin: 0,
-            fontSize: 16,
-            color: "var(--text-main)",
-            transition: "color 0.2s",
-          }}
-        >
-          <li>
-            <b>TC:</b> {patient.tc_no}
-          </li>
-          <li>
-            <b>Yaş:</b> {patient.age ?? "-"}
-          </li>
-          <li>
-            <b>Cinsiyet:</b> {patient.gender ?? "-"}
-          </li>
-          <li>
-            <b>Hastalık:</b> {patient.diagnosis ?? "-"}
-          </li>
-        </ul>
-      </div>
-      <div
-        style={{
-          width: "100%",
-          minWidth: 400,
-          height: 240,
-          minHeight: 220,
-          marginBottom: 18,
-          background: "var(--bg-muted)",
-          borderRadius: 12,
-          transition: "background 0.2s",
-        }}
-      >
-        <h3
-          style={{
-            fontWeight: 600,
-            fontSize: 20,
-            color: "var(--accent-hover)",
-            margin: "0 0 12px 0",
-            paddingLeft: 8,
-            transition: "color 0.2s",
-          }}
-        >
-          Kan Değeri Geçmişi
-        </h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-card)" />
-            <XAxis dataKey="date" stroke="var(--text-muted)" />
-            <YAxis stroke="var(--text-muted)" />
-            <Tooltip
-              contentStyle={{
-                background: "var(--card-bg)",
-                color: "var(--text-main)",
-                borderRadius: 8,
-                border: "1px solid var(--border-card)",
-                boxShadow: "var(--shadow-card)",
-              }}
-            />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="var(--accent-hover)"
-              strokeWidth={3}
-              isAnimationActive={false}
-              dot={{ stroke: "var(--accent-hover)", strokeWidth: 2 }}
-              activeDot={{ r: 7 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+
+      {/* Kan testi */}
+      <BloodTestCard
+        data={bloodTestData}
+        style={{ gridArea: "1 / 1 / 2 / 2" }}
+      />
+
+      {/* Kardiyoloji */}
+      <CardiologyCard
+        selectedId={selectedCardiology}
+        setSelectedId={setSelectedCardiology}
+        data={cardiologySummaries}
+        style={{ gridArea: "1 / 2 / 2 / 3" }}
+      />
+
+      {/* Radyoloji */}
+      <div style={{ gridColumn: "1 / span 2" }}>
+        <RadiologyCards
+          selectedId={selectedRadiology}
+          setSelectedId={setSelectedRadiology}
+          data={radiologyImages}
+        />
       </div>
     </div>
   );
 }
+
+const styles = {
+  card: {
+    background: "var(--bg-muted)",
+    borderRadius: 16,
+    padding: 20,
+    boxShadow: "var(--shadow-card)",
+  },
+  cardTitle: {
+    marginBottom: 18,
+    fontWeight: 600,
+    fontSize: 20,
+    color: "var(--accent-hover)",
+  },
+};

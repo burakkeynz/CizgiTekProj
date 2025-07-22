@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import api from "../api";
 
-function UserInfoCard({ user, expiresIn }) {
+function UserInfoCard({ user, setUser, expiresIn }) {
   const [timeLeft, setTimeLeft] = useState(expiresIn);
+  const [status, setStatus] = useState(user.status || "online");
 
   useEffect(() => {
     setTimeLeft(expiresIn);
@@ -20,6 +22,21 @@ function UserInfoCard({ user, expiresIn }) {
       clearInterval(interval);
     };
   }, [expiresIn]);
+
+  useEffect(() => {
+    setStatus(user.status || "online");
+  }, [user.status]);
+
+  const handleStatusChange = async (e) => {
+    const selected = e.target.value;
+    setStatus(selected);
+    try {
+      await api.put("/users/update-status", { status: selected });
+      setUser((prev) => ({ ...prev, status: selected }));
+    } catch (err) {
+      console.warn("Durum güncellenemedi:", err);
+    }
+  };
 
   if (!user) return null;
 
@@ -63,6 +80,7 @@ function UserInfoCard({ user, expiresIn }) {
       >
         {user.first_name?.[0]?.toUpperCase() || "U"}
       </div>
+
       <div
         style={{
           fontWeight: 600,
@@ -73,6 +91,31 @@ function UserInfoCard({ user, expiresIn }) {
       >
         {fullName}
       </div>
+
+      <select
+        value={status}
+        onChange={handleStatusChange}
+        style={{
+          marginBottom: 10,
+          padding: "6px 12px",
+          borderRadius: 8,
+          fontWeight: 500,
+          fontSize: 14,
+          color: "var(--text-main)",
+          background: "var(--input-bg)",
+          border: "1px solid var(--input-border)",
+        }}
+      >
+        <option value="online">🟢 Çevrimiçi</option>
+        <option value="busy">🟠 Meşgul</option>
+        <option disabled value="oncall">
+          🔴 Aramada
+        </option>
+        <option disabled value="offline">
+          ⚪ Çevrimdışı
+        </option>
+      </select>
+
       <div
         style={{
           background: "var(--input-bg)",
@@ -89,4 +132,5 @@ function UserInfoCard({ user, expiresIn }) {
     </div>
   );
 }
+
 export default UserInfoCard;
