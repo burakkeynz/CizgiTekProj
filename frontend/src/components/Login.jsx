@@ -1,52 +1,95 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React from "react";
+import { useTheme } from "./ThemeContext";
 import api from "../api";
 
+// Tema switch bileşeni
+function ThemeSwitch() {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  const handleToggle = () => {
+    const newTheme = isDark ? "light" : "dark";
+    setTheme(newTheme);
+    // Login öncesi kullanıcı seçimi pending_theme olarak kaydediliyor
+    localStorage.setItem("pending_theme", newTheme);
+  };
+
+  return (
+    <label
+      title={isDark ? "Açık moda geç" : "Koyu moda geç"}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 7,
+        cursor: "pointer",
+        userSelect: "none",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-block",
+          width: 44,
+          height: 24,
+          background: isDark ? "#374151" : "#e5e7eb",
+          borderRadius: 20,
+          position: "relative",
+          transition: "background 0.18s",
+        }}
+        onClick={handleToggle}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") handleToggle();
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: 3,
+            left: isDark ? 22 : 3,
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            background: isDark ? "#4da5ff" : "#fff",
+            boxShadow: "0 2px 6px #0002",
+            transition: "left 0.18s, background 0.18s",
+          }}
+        />
+      </span>
+    </label>
+  );
+}
+
 function Login() {
-  const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState("");
 
-  const inputStyle = {
-    width: "100%",
-    padding: "12px 16px",
-    marginBottom: "15px",
-    borderRadius: "6px",
-    border: "1px solid #007BFF",
-    fontSize: "1rem",
-    boxSizing: "border-box",
-  };
-
-  const buttonStyle = {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: "#28a745",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "1rem",
-    cursor: "pointer",
-    fontWeight: "bold",
-    boxSizing: "border-box",
-    transition: "background-color 0.3s",
-  };
+  // Sayfa ilk mount olduğunda pending_theme uyguluyorum (varsa)
+  React.useEffect(() => {
+    const pending = localStorage.getItem("pending_theme");
+    if (pending) setTheme(pending);
+  }, [setTheme]);
 
   const handleLogin = async () => {
+    setError("");
     const data = new URLSearchParams();
     data.append("username", username);
     data.append("password", password);
 
     try {
       await api.post("/auth/token", data);
-
-      // navigate kullandım ama window.location.href de olabilir emin dğeilim, revise: window olmalı navigate problem yaratıyor
-      // navigate("/dashboard");
+      // Login başarılı olursa pending_themei uyguluyorum ve temizleme
+      const pendingTheme = localStorage.getItem("pending_theme");
+      if (pendingTheme) {
+        setTheme(pendingTheme);
+        localStorage.setItem("theme", pendingTheme);
+        localStorage.removeItem("pending_theme");
+      }
       window.location.reload();
-
-      // Eğer useAuthCheck hook "cookie geldiyse session var" gibi anlayacak kadar hızlı değilse:
-      // window.location.href = "/dashboard"; // garanti olabilir
-    } catch (err) {
-      alert("Login failed, check your credentials");
+    } catch {
+      setError("Login failed, check your credentials");
     }
   };
 
@@ -54,42 +97,72 @@ function Login() {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #ffffff, #f0f2f5)",
+        background: isDark
+          ? "linear-gradient(135deg, #23272f, #15181c 80%)"
+          : "linear-gradient(135deg, #ffffff, #f0f2f5 80%)",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
         fontFamily: "Segoe UI, sans-serif",
         padding: "20px",
+        transition: "background 0.2s",
       }}
     >
       <div
         style={{
-          backgroundColor: "#fff",
-          padding: "30px",
-          borderRadius: "8px",
-          border: "1px solid #007BFF",
-          boxShadow: "0 4px 12px rgba(0, 123, 255, 0.15)",
+          background: isDark ? "#1c1f23" : "#fff",
+          padding: "34px 32px 24px 32px",
+          borderRadius: "11px",
+          border: isDark ? "1.5px solid #23272f" : "1.5px solid #007BFF",
+          boxShadow: isDark ? "0 4px 24px #16192555" : "0 4px 16px #83bfff22",
           width: "100%",
-          maxWidth: "400px",
+          maxWidth: 390,
+          minWidth: 290,
           textAlign: "center",
+          color: isDark ? "#ecf1fa" : "#23272f",
+          transition: "background 0.2s, border 0.2s, color 0.2s",
         }}
       >
+        {/* switch */}
         <div
           style={{
-            width: "50px",
-            height: "50px",
+            display: "flex",
+            justifyContent: "flex-end",
+            marginBottom: 18,
+            marginTop: -8,
+          }}
+        >
+          <ThemeSwitch />
+        </div>
+        <div
+          style={{
+            fontSize: 32,
+            fontWeight: 700,
+            letterSpacing: ".2px",
+            marginBottom: 9,
+            color: isDark ? "#4da5ff" : "#2d6be7",
+            textAlign: "center",
+          }}
+        >
+          Login
+        </div>
+
+        <div
+          style={{
+            width: 55,
+            height: 55,
             borderRadius: "50%",
-            backgroundColor: "#28a745",
+            background: isDark ? "#4da5ff" : "#28a745",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            margin: "0 auto 20px auto",
+            margin: "0 auto 18px auto",
           }}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
+            width="28"
+            height="28"
             fill="#fff"
             viewBox="0 0 24 24"
           >
@@ -97,33 +170,91 @@ function Login() {
           </svg>
         </div>
 
-        <h2 style={{ marginBottom: "20px", color: "#007BFF" }}>Login</h2>
-
         <input
           type="text"
           placeholder="Username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          style={inputStyle}
+          style={{
+            width: "100%",
+            padding: "13px 16px",
+            marginBottom: 13,
+            borderRadius: "7px",
+            border: isDark ? "1.3px solid #384969" : "1.3px solid #007BFF",
+            fontSize: "1rem",
+            background: isDark ? "#23272f" : "#fff",
+            color: isDark ? "#ecf1fa" : "#23272f",
+            outline: "none",
+            transition: "background 0.17s, color 0.17s, border 0.17s",
+            fontWeight: 500,
+          }}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleLogin();
+          }}
         />
         <input
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          style={inputStyle}
+          style={{
+            width: "100%",
+            padding: "13px 16px",
+            marginBottom: 13,
+            borderRadius: "7px",
+            border: isDark ? "1.3px solid #384969" : "1.3px solid #007BFF",
+            fontSize: "1rem",
+            background: isDark ? "#23272f" : "#fff",
+            color: isDark ? "#ecf1fa" : "#23272f",
+            outline: "none",
+            transition: "background 0.17s, color 0.17s, border 0.17s",
+            fontWeight: 500,
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleLogin();
+          }}
         />
 
         <button
           onClick={handleLogin}
-          style={buttonStyle}
-          onMouseOver={(e) => (e.target.style.backgroundColor = "#218838")}
-          onMouseOut={(e) => (e.target.style.backgroundColor = "#28a745")}
+          style={{
+            width: "100%",
+            padding: "12px",
+            background: isDark ? "#4da5ff" : "#28a745",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            fontSize: "1rem",
+            cursor: "pointer",
+            fontWeight: "bold",
+            marginBottom: 10,
+            transition: "background 0.17s",
+          }}
         >
           Login
         </button>
 
-        <p style={{ marginTop: "20px", fontSize: "0.9rem", color: "#666" }}>
+        {error && (
+          <div
+            style={{
+              marginBottom: 10,
+              color: "#e53749",
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <p
+          style={{
+            marginTop: "12px",
+            fontSize: "0.96rem",
+            color: isDark ? "#b6c4d2" : "#666",
+          }}
+        >
           Don't you have an account?{" "}
           <a href="/register" style={{ color: "#dc3545", fontWeight: "bold" }}>
             Register

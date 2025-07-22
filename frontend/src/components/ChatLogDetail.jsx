@@ -7,7 +7,6 @@ function ChatLogDetail({ logs, currentUser }) {
   const navigate = useNavigate();
   const messagesRef = useRef(null);
 
-  // Scroll otomatiği (chat uzun ise aşağıya kay)
   useEffect(() => {
     if (messagesRef.current) {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
@@ -29,7 +28,7 @@ function ChatLogDetail({ logs, currentUser }) {
             borderRadius: "50%",
             objectFit: "cover",
             marginLeft: 10,
-            border: "2px solid #e4e4e4",
+            border: "2px solid var(--border-card)",
           }}
         />
       );
@@ -41,15 +40,15 @@ function ChatLogDetail({ logs, currentUser }) {
           width: 38,
           height: 38,
           borderRadius: "50%",
-          background: "#eef6fa",
+          background: "var(--accent-muted)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#007cff",
+          color: "var(--accent-color)",
           fontWeight: 700,
           fontSize: 18,
           marginLeft: 10,
-          boxShadow: "0 1px 5px #e0e7ef55",
+          boxShadow: "0 1px 5px var(--shadow-card)",
         }}
       >
         {name.charAt(0).toUpperCase()}
@@ -57,7 +56,6 @@ function ChatLogDetail({ logs, currentUser }) {
     );
   }
 
-  // AI (Gemini) ikonu
   function getAIIcon() {
     return (
       <div
@@ -65,15 +63,15 @@ function ChatLogDetail({ logs, currentUser }) {
           width: 38,
           height: 38,
           borderRadius: "50%",
-          background: "#e0e7ff",
+          background: "var(--nav-bg-active)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#4b5ec9",
+          color: "var(--nav-icon)",
           fontWeight: 800,
           fontSize: 18,
           marginRight: 10,
-          boxShadow: "0 1px 5px #e0e7ef44",
+          boxShadow: "0 1px 5px var(--shadow-card)",
         }}
       >
         G
@@ -87,9 +85,9 @@ function ChatLogDetail({ logs, currentUser }) {
         <button
           onClick={() => navigate("/logs")}
           style={{
-            background: "#eef3fb",
+            background: "var(--accent-muted)",
             border: "none",
-            color: "#2273c5",
+            color: "var(--accent-color)",
             fontWeight: 600,
             fontSize: 16,
             cursor: "pointer",
@@ -105,7 +103,9 @@ function ChatLogDetail({ logs, currentUser }) {
           <FiArrowLeft size={20} />
           Tüm Loglara Dön
         </button>
-        <div style={{ marginTop: 40, color: "#7a879a" }}>Log bulunamadı.</div>
+        <div style={{ marginTop: 40, color: "var(--text-muted)" }}>
+          Log bulunamadı.
+        </div>
       </div>
     );
   }
@@ -119,18 +119,18 @@ function ChatLogDetail({ logs, currentUser }) {
             overflow-y: auto;
             padding-right: 4px;
             scrollbar-width: thin;
-            scrollbar-color: #b8c3d7 #f8fafc;
+            scrollbar-color: var(--border-card) var(--bg-main);
           }
           .chatlog-messages-scrollable::-webkit-scrollbar {
             width: 7px;
-            background: #f8fafc;
+            background: var(--bg-main);
           }
           .chatlog-messages-scrollable::-webkit-scrollbar-thumb {
-            background: #c7d1e6;
+            background: var(--border-card);
             border-radius: 10px;
           }
           .chatlog-messages-scrollable::-webkit-scrollbar-thumb:hover {
-            background: #a6b3c6;
+            background: var(--accent-muted);
           }
         `}
       </style>
@@ -146,9 +146,9 @@ function ChatLogDetail({ logs, currentUser }) {
         <button
           onClick={() => navigate("/logs")}
           style={{
-            background: "#eef3fb",
+            background: "var(--accent-muted)",
             border: "none",
-            color: "#2273c5",
+            color: "var(--accent-color)",
             fontWeight: 600,
             fontSize: 16,
             cursor: "pointer",
@@ -159,6 +159,7 @@ function ChatLogDetail({ logs, currentUser }) {
             display: "flex",
             alignItems: "center",
             gap: 8,
+            transition: "background 0.15s, color 0.15s",
           }}
         >
           <FiArrowLeft size={20} />
@@ -168,7 +169,7 @@ function ChatLogDetail({ logs, currentUser }) {
           style={{
             fontWeight: 700,
             fontSize: 26,
-            color: "#253046",
+            color: "var(--text-main)",
             marginBottom: 16,
             alignSelf: "flex-start",
           }}
@@ -177,17 +178,18 @@ function ChatLogDetail({ logs, currentUser }) {
         </h2>
         <div
           style={{
-            background: "#fafdff",
+            background: "var(--card-bg)",
             borderRadius: 18,
             padding: 24,
             minWidth: 330,
             maxWidth: 570,
             width: "100%",
-            boxShadow: "0 1px 8px #dde5fa1b",
+            boxShadow: "var(--shadow-card)",
             display: "flex",
             flexDirection: "column",
             alignItems: "stretch",
             height: "auto",
+            transition: "background 0.2s, box-shadow 0.2s",
           }}
         >
           <div
@@ -209,14 +211,16 @@ function ChatLogDetail({ logs, currentUser }) {
                     display: "flex",
                     flexDirection: isUser ? "row-reverse" : "row",
                     alignItems: "flex-end",
-                    marginBottom: 20, // 14 -> 20 px spacing
+                    marginBottom: 20,
                   }}
                 >
                   {isUser ? getUserIcon() : getAIIcon()}
                   <div
                     style={{
-                      background: isUser ? "#e0f7fa" : "#e3e8f5",
-                      color: "#24446b",
+                      background: isUser
+                        ? "var(--accent-muted)"
+                        : "var(--bg-muted)",
+                      color: "var(--text-main)",
                       padding: "10px 16px",
                       borderRadius: 12,
                       maxWidth: "78%",
@@ -225,8 +229,8 @@ function ChatLogDetail({ logs, currentUser }) {
                       whiteSpace: "pre-wrap",
                       marginLeft: isUser ? 0 : 6,
                       marginRight: isUser ? 6 : 0,
-                      boxShadow: "0 2px 7px #c6d4e40c",
-                      transition: "box-shadow .14s",
+                      boxShadow: "0 2px 7px var(--shadow-card)",
+                      transition: "box-shadow .14s, background 0.14s",
                     }}
                   >
                     {msg.text}
@@ -235,7 +239,9 @@ function ChatLogDetail({ logs, currentUser }) {
               );
             })}
           </div>
-          <div style={{ marginTop: 18, color: "#7a879a", fontSize: 13 }}>
+          <div
+            style={{ marginTop: 18, color: "var(--text-muted)", fontSize: 13 }}
+          >
             Oluşturulma:{" "}
             {log.created_at
               ? new Date(log.created_at).toLocaleString("tr-TR")

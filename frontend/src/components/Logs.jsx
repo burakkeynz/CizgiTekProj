@@ -49,26 +49,26 @@ function Logs({ logs, onDelete }) {
         {`
         .logs-scrollable {
           scrollbar-width: thin;
-          scrollbar-color: #b8c3d7 #f8fafc;
+          scrollbar-color: var(--border-card) var(--bg-main);
         }
         .logs-scrollable::-webkit-scrollbar {
           width: 7px;
-          background: #f8fafc;
+          background: var(--bg-main);
         }
         .logs-scrollable::-webkit-scrollbar-thumb {
-          background: #c7d1e6;
+          background: var(--border-card);
           border-radius: 10px;
         }
         .logs-scrollable::-webkit-scrollbar-thumb:hover {
-          background: #a6b3c6;
+          background: var(--accent-muted);
         }
         .log-card {
           transition: box-shadow .15s, background .12s;
           cursor: pointer;
-          background: #fafdff;
-          border: 1.2px solid #e4e9f3;
+          background: var(--card-bg);
+          border: 1.2px solid var(--border-card);
           border-radius: 18px;
-          box-shadow: 0 2px 16px #dde5fa23;
+          box-shadow: var(--shadow-card);
           padding: 22px;
           min-width: 320px;
           max-width: 740px;
@@ -77,8 +77,8 @@ function Logs({ logs, onDelete }) {
           user-select: none;
         }
         .log-card:hover {
-          background: #f1f6fc;
-          box-shadow: 0 6px 20px #b8c3d733;
+          background: var(--nav-bg-hover);
+          box-shadow: 0 6px 20px var(--shadow-card);
         }
         .log-delete-btn {
           transition: background .13s;
@@ -87,7 +87,7 @@ function Logs({ logs, onDelete }) {
           background: #fbe4e4;
         }
         .log-more {
-          color: #b3b8c5;
+          color: var(--text-muted);
           font-size: 21px;
           text-align: center;
           letter-spacing: 6px;
@@ -95,20 +95,20 @@ function Logs({ logs, onDelete }) {
           font-weight: 700;
         }
         .log-q-label {
-          color: #1853c0;
+          color: var(--accent-hover);
           font-weight: 600;
         }
         .log-q-text {
-          color: #234178;
+          color: var(--text-label);
           font-weight: 500;
           margin-left: 8px;
         }
         .log-a-label {
-          color: #12796e;
+          color: var(--accent-color);
           font-weight: 600;
         }
         .log-a-text {
-          color: #2d3e53;
+          color: var(--text-main);
           font-weight: 500;
           margin-left: 8px;
         }
@@ -120,21 +120,24 @@ function Logs({ logs, onDelete }) {
           padding: 32,
           height: "100vh",
           overflowY: "auto",
-          background: "#f8fafc",
+          background: "var(--bg-main)",
+          transition: "background 0.2s, color 0.2s",
         }}
       >
         <h2
           style={{
             fontWeight: 700,
             fontSize: 26,
-            color: "#253046",
+            color: "var(--text-main)",
             marginBottom: 18,
           }}
         >
           Chat Geçmişi
         </h2>
         {logs.length === 0 && (
-          <div style={{ color: "#7a879a", fontSize: 17, marginTop: 30 }}>
+          <div
+            style={{ color: "var(--text-muted)", fontSize: 17, marginTop: 30 }}
+          >
             Hiç log yok.
           </div>
         )}
@@ -164,7 +167,7 @@ function Logs({ logs, onDelete }) {
                 >
                   <span
                     style={{
-                      color: "#1853c0",
+                      color: "var(--accent-hover)",
                       fontWeight: 600,
                       fontSize: 16,
                       letterSpacing: 0.1,
@@ -175,7 +178,7 @@ function Logs({ logs, onDelete }) {
                       style={{
                         textDecoration: "underline",
                         fontWeight: 500,
-                        color: "#1a2e46",
+                        color: "var(--text-label)",
                       }}
                     >
                       {firstQ?.substring(0, 32) || "Soru yok"}
@@ -184,7 +187,7 @@ function Logs({ logs, onDelete }) {
                   </span>
                   <span
                     style={{
-                      color: "#7a879a",
+                      color: "var(--text-muted)",
                       fontWeight: 400,
                       fontSize: 14,
                       marginLeft: 14,

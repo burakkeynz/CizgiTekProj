@@ -9,6 +9,7 @@ import {
   FiLogOut,
   FiFileText,
 } from "react-icons/fi";
+import { useTheme } from "./ThemeContext";
 import api from "../api";
 
 const NAV_ITEMS = [
@@ -47,9 +48,11 @@ const NAV_ITEMS = [
 function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme } = useTheme();
 
   const handleLogout = async () => {
     try {
+      localStorage.setItem("last_theme", theme);
       await api.post("/auth/logout");
     } catch (err) {
       console.warn("Logout failed, proceeding anyway.");
@@ -62,14 +65,15 @@ function Navbar() {
     <div
       style={{
         width: 200,
-        background: "#38404a",
-        color: "#fff",
+        background: "var(--nav-bg)",
+        color: "var(--text-main)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         paddingTop: 36,
         minHeight: "100vh",
         justifyContent: "space-between",
+        transition: "background 0.2s, color 0.2s",
       }}
     >
       <div style={{ width: "100%" }}>
@@ -82,10 +86,12 @@ function Navbar() {
               alignItems: "center",
               gap: 15,
               padding: "14px 30px",
-              color: location.pathname.startsWith(item.to) ? "#80b0ff" : "#fff",
+              color: location.pathname.startsWith(item.to)
+                ? "var(--accent-color)"
+                : "var(--text-main)",
               background: location.pathname.startsWith(item.to)
-                ? "#222933"
-                : "none",
+                ? "var(--nav-bg-active)"
+                : "var(--nav-bg)",
               fontWeight: location.pathname.startsWith(item.to) ? "bold" : 400,
               textDecoration: "none",
               fontSize: 16,
@@ -94,7 +100,12 @@ function Navbar() {
               transition: "all 0.17s",
             }}
           >
-            {item.icon}
+            {React.cloneElement(item.icon, {
+              color: location.pathname.startsWith(item.to)
+                ? "var(--accent-color)"
+                : "var(--nav-icon)",
+            })}
+
             <span>{item.label}</span>
           </Link>
         ))}
@@ -112,7 +123,7 @@ function Navbar() {
           gap: 14,
           justifyContent: "center",
           padding: "13px 0",
-          borderTop: "1px solid #27303a",
+          borderTop: "1px solid var(--border-card)",
         }}
       >
         <FiLogOut size={24} />

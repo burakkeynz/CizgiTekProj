@@ -41,10 +41,11 @@ export default function PatientDetail() {
       style={{
         maxWidth: 680,
         margin: "40px auto 0",
-        background: "#fff",
+        background: "var(--card-bg)",
         borderRadius: 18,
-        boxShadow: "0 2px 16px #f0f1f5",
+        boxShadow: "var(--shadow-card)",
         padding: "40px 36px 32px 36px",
+        transition: "background 0.2s, color 0.2s",
       }}
     >
       <button
@@ -53,12 +54,13 @@ export default function PatientDetail() {
           marginBottom: 18,
           padding: "5px 16px",
           fontSize: 15,
-          background: "#f2f6ff",
-          color: "#4977c7",
+          background: "var(--accent-muted)",
+          color: "var(--accent-hover)",
           border: "none",
           borderRadius: 7,
           cursor: "pointer",
           fontWeight: 500,
+          transition: "background 0.2s, color 0.2s",
         }}
       >
         ← Geri
@@ -68,7 +70,8 @@ export default function PatientDetail() {
           fontSize: 28,
           fontWeight: 700,
           marginBottom: 16,
-          color: "#2a3655",
+          color: "var(--accent-hover)",
+          letterSpacing: ".5px",
         }}
       >
         {patient.first_name} {patient.last_name}
@@ -77,8 +80,9 @@ export default function PatientDetail() {
         style={{
           marginBottom: 28,
           padding: "22px 24px",
-          background: "#f6f8fd",
+          background: "var(--bg-muted)",
           borderRadius: 12,
+          transition: "background 0.2s",
         }}
       >
         <ul
@@ -87,7 +91,8 @@ export default function PatientDetail() {
             padding: 0,
             margin: 0,
             fontSize: 16,
-            color: "#334",
+            color: "var(--text-main)",
+            transition: "color 0.2s",
           }}
         >
           <li>
@@ -108,36 +113,48 @@ export default function PatientDetail() {
         style={{
           width: "100%",
           minWidth: 400,
-          height: 240, // Sabit yükseklik
-          minHeight: 220, // En az 220px
+          height: 240,
+          minHeight: 220,
           marginBottom: 18,
-          background: "#f6f8fd",
+          background: "var(--bg-muted)",
           borderRadius: 12,
+          transition: "background 0.2s",
         }}
       >
         <h3
           style={{
             fontWeight: 600,
             fontSize: 20,
-            color: "#4977c7",
+            color: "var(--accent-hover)",
             margin: "0 0 12px 0",
             paddingLeft: 8,
+            transition: "color 0.2s",
           }}
         >
           Kan Değeri Geçmişi
         </h3>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-card)" />
+            <XAxis dataKey="date" stroke="var(--text-muted)" />
+            <YAxis stroke="var(--text-muted)" />
+            <Tooltip
+              contentStyle={{
+                background: "var(--card-bg)",
+                color: "var(--text-main)",
+                borderRadius: 8,
+                border: "1px solid var(--border-card)",
+                boxShadow: "var(--shadow-card)",
+              }}
+            />
             <Line
               type="monotone"
               dataKey="value"
-              stroke="#4977c7"
+              stroke="var(--accent-hover)"
               strokeWidth={3}
               isAnimationActive={false}
+              dot={{ stroke: "var(--accent-hover)", strokeWidth: 2 }}
+              activeDot={{ r: 7 }}
             />
           </LineChart>
         </ResponsiveContainer>

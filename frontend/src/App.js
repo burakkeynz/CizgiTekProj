@@ -13,10 +13,10 @@ import Register from "./components/Register";
 import SessionExpired from "./components/SessionExpired";
 import Goodbye from "./components/Goodbye";
 import ChatLogDetail from "./components/ChatLogDetail";
-import Patients from "./components/Patients"; // yeni
-import Sessions from "./components/Sessions"; // yeni
-import Chat from "./components/Chat"; // yeni
-import Settings from "./components/Settings"; // yeni
+import Patients from "./components/Patients";
+import Sessions from "./components/Sessions";
+import Chat from "./components/Chat";
+import Settings from "./components/Settings";
 import PatientDetail from "./components/PatientDetail";
 import api from "./api";
 
@@ -96,7 +96,13 @@ function App() {
   const showLayout = hasSession === true && !isPublicRoute;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: "var(--bg-main)",
+      }}
+    >
       {showLayout && <Navbar />}
       <div style={{ flex: 1 }}>
         <Routes>
@@ -123,12 +129,13 @@ function App() {
           style={{
             width: 360,
             minWidth: 320,
-            borderLeft: "1.5px solid #e4e8ef",
-            boxShadow: "-1px 0 10px #dde1e6",
+            borderLeft: "1.5px solid var(--border-card)",
+            boxShadow: "var(--shadow-card)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            background: "#fff",
+            background: "var(--card-bg)",
+            transition: "background 0.18s, color 0.18s",
           }}
         >
           {user && <UserInfoCard user={user} expiresIn={expiresIn} />}

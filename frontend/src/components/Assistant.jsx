@@ -2,13 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { FiSearch, FiUpload, FiX } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import api from "../api";
+import { useTheme } from "./ThemeContext";
 
 const SESSION_KEY = "ai_assistang_logs:";
 const INITIAL_MSG = [
-  {
-    role: "model",
-    text: "Merhaba! Size nasıl yardımcı olabilirim?",
-  },
+  { role: "model", text: "Merhaba! Size nasıl yardımcı olabilirim?" },
 ];
 
 function DotLoader() {
@@ -19,7 +17,7 @@ function DotLoader() {
       <span className="dot">.</span>
       <style>
         {`
-          .dot { animation: blink 1.4s infinite both; font-size: 22px; }
+          .dot { animation: blink 1.4s infinite both; font-size: 22px; color: var(--accent-color);}
           .dot:nth-child(2) { animation-delay: .2s; }
           .dot:nth-child(3) { animation-delay: .4s; }
           @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
@@ -31,6 +29,8 @@ function DotLoader() {
 
 function Assistant({ onNewLog }) {
   const location = useLocation();
+  const { theme } = useTheme();
+
   const [isOpen, setIsOpen] = useState(() => {
     try {
       const saved = sessionStorage.getItem("ai_assistant_open");
@@ -39,10 +39,6 @@ function Assistant({ onNewLog }) {
       return true;
     }
   });
-
-  useEffect(() => {
-    sessionStorage.setItem("ai_assistant_open", JSON.stringify(isOpen));
-  }, [isOpen]);
 
   const [messages, setMessages] = useState(() => {
     try {
@@ -65,11 +61,13 @@ function Assistant({ onNewLog }) {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    sessionStorage.setItem("ai_assistant_open", JSON.stringify(isOpen));
+  }, [isOpen]);
+  useEffect(() => {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages));
     } catch {}
   }, [messages]);
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isOpen]);
@@ -210,17 +208,18 @@ function Assistant({ onNewLog }) {
           right: 32,
           zIndex: 50,
           cursor: "pointer",
-          background: "#0066ff",
+          background: "var(--accent-color)",
           color: "#fff",
           borderRadius: "50%",
           width: 54,
           height: 54,
-          boxShadow: "0 3px 18px #0066ff33",
+          boxShadow: "0 3px 18px var(--shadow-card)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           fontSize: 32,
           fontWeight: "bold",
+          transition: "background 0.13s",
         }}
         onClick={() => setIsOpen(true)}
         title="AI Asistan'ı aç"
@@ -236,19 +235,20 @@ function Assistant({ onNewLog }) {
         width: "100%",
         height: 475,
         maxHeight: 480,
-        background: "#f8fafc",
+        background: "var(--card-bg)",
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
-        border: "1px solid #e4e4e4",
+        border: "1px solid var(--input-border)",
         boxShadow: "0 -2px 10px #00000008",
         display: "flex",
         flexDirection: "column",
         position: "relative",
+        transition: "background 0.13s, border 0.13s",
       }}
     >
       <div
         style={{
-          background: "#0066ff",
+          background: "var(--accent-color)",
           color: "#fff",
           padding: "12px 0",
           borderTopLeftRadius: 16,
@@ -256,6 +256,7 @@ function Assistant({ onNewLog }) {
           textAlign: "center",
           fontWeight: "bold",
           fontSize: 18,
+          transition: "background 0.2s",
         }}
       >
         AI-Assistant
@@ -281,6 +282,7 @@ function Assistant({ onNewLog }) {
           display: "flex",
           flexDirection: "column",
           gap: 8,
+          background: "var(--card-bg)",
         }}
       >
         {messages.map((msg, idx) => (
@@ -288,8 +290,9 @@ function Assistant({ onNewLog }) {
             key={idx}
             style={{
               alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-              background: msg.role === "user" ? "#e0f7fa" : "#e3e8f5",
-              color: "#222",
+              background:
+                msg.role === "user" ? "var(--accent-color)" : "var(--input-bg)",
+              color: msg.role === "user" ? "#fff" : "var(--text-main)",
               padding: "8px 14px",
               borderRadius: 12,
               maxWidth: "78%",
@@ -298,6 +301,13 @@ function Assistant({ onNewLog }) {
               minHeight: msg.isLoader ? 28 : undefined,
               display: "flex",
               alignItems: "center",
+              boxShadow:
+                msg.role === "user" ? "0 1px 4px var(--shadow-card)" : "none",
+              border:
+                msg.role === "user"
+                  ? "1px solid var(--accent-color)"
+                  : "1px solid var(--input-border)",
+              transition: "background 0.2s, color 0.2s",
             }}
           >
             {msg.isLoader ? <DotLoader /> : msg.text}
@@ -306,8 +316,15 @@ function Assistant({ onNewLog }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Tool & input */}
-      <div style={{ padding: 10, borderTop: "1px solid #e0e0e0" }}>
+      <div
+        style={{
+          padding: 10,
+          borderTop: "1px solid var(--input-border)",
+          background: "var(--card-bg)",
+          borderBottomLeftRadius: 16,
+          borderBottomRightRadius: 16,
+        }}
+      >
         <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
           <button
             onClick={() => setActiveTool("search")}
@@ -320,10 +337,15 @@ function Assistant({ onNewLog }) {
               padding: "6px 10px",
               fontSize: 13,
               borderRadius: 6,
-              background: activeTool === "search" ? "#0066ff" : "#f1f1f1",
-              color: activeTool === "search" ? "#fff" : "#333",
+              background:
+                activeTool === "search"
+                  ? "var(--accent-color)"
+                  : "var(--input-bg)",
+              color: activeTool === "search" ? "#fff" : "var(--text-main)",
               border: "none",
               cursor: "pointer",
+              fontWeight: 500,
+              transition: "background 0.18s, color 0.18s",
             }}
           >
             <FiSearch />
@@ -340,10 +362,15 @@ function Assistant({ onNewLog }) {
               padding: "6px 10px",
               fontSize: 13,
               borderRadius: 6,
-              background: activeTool === "upload" ? "#0066ff" : "#f1f1f1",
-              color: activeTool === "upload" ? "#fff" : "#333",
+              background:
+                activeTool === "upload"
+                  ? "var(--accent-color)"
+                  : "var(--input-bg)",
+              color: activeTool === "upload" ? "#fff" : "var(--text-main)",
               border: "none",
               cursor: "pointer",
+              fontWeight: 500,
+              transition: "background 0.18s, color 0.18s",
             }}
           >
             <FiUpload />
@@ -371,9 +398,12 @@ function Assistant({ onNewLog }) {
             resize: "none",
             borderRadius: 8,
             padding: 8,
-            border: "1px solid #ccc",
+            border: "1px solid var(--input-border)",
             fontSize: 14,
             marginBottom: 8,
+            background: "var(--input-bg)",
+            color: "var(--text-main)",
+            transition: "background 0.18s, color 0.18s",
           }}
         />
         <div
@@ -384,7 +414,7 @@ function Assistant({ onNewLog }) {
             disabled={loading}
             style={{
               flex: 1,
-              background: "#0066ff",
+              background: "var(--accent-color)",
               color: "#fff",
               border: "none",
               borderRadius: 6,
@@ -392,6 +422,7 @@ function Assistant({ onNewLog }) {
               fontWeight: 500,
               fontSize: 14,
               cursor: "pointer",
+              transition: "background 0.18s",
             }}
           >
             Gönder
@@ -400,12 +431,15 @@ function Assistant({ onNewLog }) {
             onClick={handleEndDiscussion}
             style={{
               flex: 1,
-              border: "1px solid #ccc",
+              border: "1px solid var(--input-border)",
               borderRadius: 6,
               padding: "8px 0",
               fontSize: 14,
-              background: "#fff",
+              background: "var(--input-bg)",
+              color: "var(--text-main)",
               cursor: "pointer",
+              fontWeight: 500,
+              transition: "background 0.18s, color 0.18s",
             }}
           >
             End Discussion

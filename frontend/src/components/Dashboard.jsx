@@ -7,18 +7,20 @@ function Dashboard() {
       style={{
         flex: 1,
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #f8fafc 0%, #f8fbff 100%)",
+        background:
+          "linear-gradient(135deg, var(--bg-main) 0%, var(--card-bg) 100%)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
+        transition: "background 0.2s",
       }}
     >
       <h1
         style={{
           fontSize: 38,
           fontWeight: 800,
-          color: "#1e3365",
+          color: "var(--accent-color)",
           letterSpacing: 1,
           marginBottom: 16,
         }}
@@ -40,7 +42,7 @@ function Dashboard() {
       <div
         style={{
           fontSize: 20,
-          color: "#4778b0",
+          color: "var(--text-main)",
           fontWeight: 600,
           textAlign: "center",
           lineHeight: 1.4,
@@ -49,7 +51,9 @@ function Dashboard() {
       >
         Hastane Panel Sistemi
         <br />
-        <span style={{ fontWeight: 400, fontSize: 17, color: "#84a2cd" }}>
+        <span
+          style={{ fontWeight: 400, fontSize: 17, color: "var(--text-muted)" }}
+        >
           Kolayca görüşün, danışın ve erişin
         </span>
       </div>
