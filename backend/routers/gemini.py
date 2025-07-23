@@ -1,68 +1,61 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from dotenv import load_dotenv
-import os
-import anyio
-import json
+import io, mimetypes, os, json
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Form
 from google import genai
 from google.genai import types
-
-load_dotenv()
+from backend.utils.aws_s3 import read_file_from_s3
+import anyio
 
 router = APIRouter(prefix="/gemini", tags=["gemini"])
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL = "gemini-2.5-flash"
 
-if not GEMINI_API_KEY:
-    raise RuntimeError("Gemini API key not set!")
-
-client = genai.Client(api_key=GEMINI_API_KEY)
+def s3_key_from_url(url: str) -> str:
+    return url.split(".amazonaws.com/", 1)[1]
 
 @router.post("/chat")
 async def gemini_chat(
     message: str = Form(...),
-    file: UploadFile = File(None),
+    files: Optional[List[str]] = Form(None),
     web_search: bool = Form(False),
     contents: str = Form(None),
 ):
     try:
-        chat_history = None
-        if contents:
-            import json
-            chat_history = json.loads(contents)
-
+        chat_history = json.loads(contents) if contents else None
         contents_list = []
 
-        # Metin mesajı
-        if message and message.strip():
-            user_msg = types.Content(
-                role="user",
-                parts=[types.Part(text=message)]
-            )
-            contents_list.append(user_msg)
+        if message.strip():
+            contents_list.append(types.Content(role="user", parts=[types.Part(text=message)]))
 
-        # Dosya mesajı (varsa)
-        if file:
-            file_bytes = await file.read()
-            doc_msg = types.Content(
-                role="user",
-                parts=[
-                    types.Part(
-                        inline_data=types.Blob(
-                            mime_type=file.content_type,
-                            data=file_bytes
-                        )
-                    )
-                ]
-            )
-            contents_list.append(doc_msg)
+        if files:
+            if isinstance(files, str): files = [files]
+            for url in files:
+                s3_key = s3_key_from_url(url)
+                data = read_file_from_s3(s3_key)
+                filename = os.path.basename(s3_key)
+                mime, _ = mimetypes.guess_type(filename)
+                if not mime:
+                    mime = "application/octet-stream"
+                file_like = io.BytesIO(data)
+
+                uploaded = client.files.upload(
+                    file=file_like,
+                    config=dict(mime_type=mime)
+                )
+                file_data = types.FileData(
+                    file_uri=uploaded.uri,
+                    mime_type=mime
+                )
+                contents_list.append(
+                    types.Content(role="user", parts=[types.Part(file_data=file_data)])
+                )
 
         config = None
         if web_search:
-            grounding_tool = types.Tool(google_search=types.GoogleSearch())
-            config = types.GenerateContentConfig(tools=[grounding_tool])
+            config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
 
-        def make_request():
+        def run():
             if config:
                 return client.models.generate_content(
                     model=MODEL,
@@ -74,18 +67,8 @@ async def gemini_chat(
                     model=MODEL,
                     contents=contents_list
                 )
-        response = await anyio.to_thread.run_sync(make_request)
-        if hasattr(response, "text") and response.text:
-            return {
-                "response": response.text,
-                "history": chat_history
-            }
-        else:
-            return {
-                "raw_response": str(response),
-                "history": chat_history
-            }
+        response = await anyio.to_thread.run_sync(run)
+        return {"response": getattr(response, "text", str(response)), "history": chat_history}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Gemini SDK Hatası: {str(e)}")
+        import traceback; traceback.print_exc()
+        raise HTTPException(500, detail=f"Gemini SDK Hatası: {e}")

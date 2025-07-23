@@ -1,11 +1,13 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FiArrowLeft } from "react-icons/fi";
+import { FiArrowLeft, FiFile, FiEye } from "react-icons/fi";
+import FilePreviewModal from "./FilePreviewModal";
 
 function ChatLogDetail({ logs, currentUser }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const messagesRef = useRef(null);
+  const [preview, setPreview] = useState(null); // {fileType, fileUrl, fileName}
 
   useEffect(() => {
     if (messagesRef.current) {
@@ -234,6 +236,75 @@ function ChatLogDetail({ logs, currentUser }) {
                     }}
                   >
                     {msg.text}
+
+                    {msg.files && msg.files.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "flex",
+                          gap: 10,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {msg.files.map((file, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              background: "#f2f4fa",
+                              borderRadius: 7,
+                              padding: "4px 8px",
+                              fontSize: 13,
+                              border: "1px solid #e3e7ee",
+                            }}
+                          >
+                            <FiFile style={{ marginRight: 2, fontSize: 15 }} />
+                            <span
+                              style={{
+                                cursor: "pointer",
+                                color: "#3a66e2",
+                                fontWeight: 600,
+                              }}
+                              title="Dosyayı önizle"
+                              onClick={() =>
+                                setPreview({
+                                  fileType: file.type,
+                                  fileUrl: file.url,
+                                  fileName: file.name,
+                                })
+                              }
+                            >
+                              {file.name}
+                              <FiEye
+                                style={{
+                                  marginLeft: 5,
+                                  fontSize: 15,
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </span>
+                            <a
+                              href={file.url}
+                              download={file.name}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                marginLeft: 8,
+                                color: "#007bff",
+                                textDecoration: "underline",
+                                fontSize: 12,
+                                fontWeight: 400,
+                              }}
+                              title="İndir"
+                            >
+                              İndir
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -249,6 +320,15 @@ function ChatLogDetail({ logs, currentUser }) {
           </div>
         </div>
       </div>
+
+      {preview && (
+        <FilePreviewModal
+          fileType={preview.fileType}
+          fileUrl={preview.fileUrl}
+          fileName={preview.fileName}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </>
   );
 }
