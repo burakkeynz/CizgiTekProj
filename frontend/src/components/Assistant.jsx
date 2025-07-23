@@ -3,7 +3,7 @@ import { FiSearch, FiUpload, FiX, FiFile, FiEye } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
 import api from "../api";
 import { useTheme } from "./ThemeContext";
-import FilePreviewModal from "./FilePreviewModal"; // dışarıdan, props ile çağırıyoruz
+import FilePreviewModal from "./FilePreviewModal";
 
 const SESSION_KEY = "ai_assistang_logs:";
 const INITIAL_MSG = [
@@ -12,7 +12,15 @@ const INITIAL_MSG = [
 
 function DotLoader() {
   return (
-    <span style={{ display: "inline-block", width: 32 }}>
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "100%",
+        minHeight: 28,
+      }}
+    >
       <span className="dot">.</span>
       <span className="dot">.</span>
       <span className="dot">.</span>
@@ -28,7 +36,6 @@ function DotLoader() {
   );
 }
 
-// S3 key parse helper
 function getS3KeyFromUrl(url) {
   const idx = url.indexOf(".amazonaws.com/");
   if (idx === -1) return url; // zaten key
@@ -157,8 +164,8 @@ function Assistant({ onNewLog }) {
       files: uploadedFiles,
     };
 
-    setMessages([
-      ...messages,
+    setMessages((prev) => [
+      ...prev,
       userMsg,
       { role: "model", text: "...", isLoader: true },
     ]);
@@ -167,11 +174,26 @@ function Assistant({ onNewLog }) {
     setSelectedFiles([]);
 
     try {
-      // const responseText = "Yanıt geldiyse burada göster";
-      // setMessages((msgs) => {
-      //   const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
-      //   return [...msgsWithoutLoader, { role: "model", text: responseText }];
-      // });
+      // ---- BU KISIM DEĞİŞTİ ----
+      const formData = new FormData();
+      formData.append("message", input || "");
+      if (uploadedFiles.length > 0) {
+        uploadedFiles.forEach((file) => {
+          formData.append("files", file.url);
+        });
+      }
+      formData.append("web_search", activeTool === "search" ? "true" : "false");
+      formData.append("contents", JSON.stringify(messages));
+
+      const res = await api.post("/gemini/chat", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const responseText =
+        res.data?.response || res.data?.raw_response || "Yanıt yok";
+      setMessages((msgs) => {
+        const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
+        return [...msgsWithoutLoader, { role: "model", text: responseText }];
+      });
     } catch (err) {
       setMessages((msgs) => {
         const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
@@ -433,7 +455,23 @@ function Assistant({ onNewLog }) {
               </div>
             )}
 
-            {msg.isLoader ? <DotLoader /> : msg.text}
+            {msg.isLoader ? (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 28,
+                  padding: 0,
+                  margin: 0,
+                }}
+              >
+                <DotLoader />
+              </div>
+            ) : (
+              msg.text
+            )}
           </div>
         ))}
 
