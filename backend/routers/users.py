@@ -52,7 +52,23 @@ async def change_password(user: user_dependency, db: db_dependency, user_verific
     user_model.hashed_password = bcrypt_context.hash(user_verification.new_password)
     db.add(user_model)
     db.commit()
+
+@router.get("/available", status_code=200)
+async def get_available_users(user: user_dependency, db: db_dependency):
+    if user is None:
+        raise HTTPException(status_code=401, detail='Auth Failed')
     
+    users = db.query(Users).filter(Users.id != user["id"]).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "status": u.status,
+            "avatar": u.profile_picture_url,
+        }
+        for u in users
+    ]
+
 @router.put("/update-status", status_code=200)
 async def update_status(
     user: user_dependency,

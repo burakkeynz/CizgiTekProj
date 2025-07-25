@@ -3,6 +3,7 @@ from backend.database import Base
 from datetime import datetime, timezone
 from sqlalchemy.orm import relationship
 import pytz
+from sqlalchemy import UniqueConstraint
 
 class Users(Base):
   __tablename__='users'
@@ -14,6 +15,53 @@ class Users(Base):
   hashed_password = Column(String(length=255))
   role= Column(String(length=50))
   status = Column(String(length=20), default="offline")
+  profile_picture_url = Column(String(length=500), nullable=True)
+
+#yeni eklendi 25.07.2025
+class UserConversation(Base):
+    __tablename__ = "user_conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user1_id = Column(Integer, ForeignKey("users.id"))
+    user2_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.timezone("Europe/Istanbul")))
+
+    user1 = relationship("Users", foreign_keys=[user1_id])
+    user2 = relationship("Users", foreign_keys=[user2_id])
+
+    __table_args__ = (
+        UniqueConstraint("user1_id", "user2_id", name="unique_user_pair"),
+    )
+    
+#yeni eklendi 25.07.2025
+class UserChatMessage(Base):
+    __tablename__ = "user_chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("user_conversations.id"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String(length=2000), nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.timezone("Europe/Istanbul")))
+
+    conversation = relationship("UserConversation", backref="messages")
+    sender = relationship("Users", foreign_keys=[sender_id])
+
+#yeni eklendi 25.07.2025
+class UserConversationState(Base):
+    __tablename__ = "user_conversation_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    conversation_id = Column(Integer, ForeignKey("user_conversations.id"))
+    cleared_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "conversation_id", name="user_conversation_unique"),
+    )
+
+    user = relationship("Users")
+    conversation = relationship("UserConversation")
+
 
 class AssistantChatLog(Base):
     __tablename__ = "assistant_chat_logs"

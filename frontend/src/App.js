@@ -110,7 +110,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/patients" element={<Patients />} />
           <Route path="/sessions" element={<Sessions />} />
-          <Route path="/chat" element={<Chat />} />
+          <Route path="/chat" element={<Chat currentUser={user} />} />
           <Route path="/settings" element={<Settings />} />
           <Route
             path="/logs"

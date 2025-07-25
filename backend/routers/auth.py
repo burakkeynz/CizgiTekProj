@@ -183,7 +183,12 @@ async def login_token(
     return {"message": "Login successful"}
 
 @router.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
-    return {"message": "Logged out successfully"}
+async def logout(response: Response, db: db_dependency, user_data: dict = Depends(get_current_user_from_cookie)):
 
+    response.delete_cookie("access_token", path="/")
+    user = db.query(Users).filter(Users.id == user_data["id"]).first()
+    if user:
+        user.status = "offline"
+        db.commit()
+
+    return {"message": "Logged out successfully"}
