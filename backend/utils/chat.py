@@ -17,7 +17,7 @@ def get_or_create_link(user_id: int, conversation_id: int, db: Session) -> UserC
     return link
 
 def create_message(sender_id: int, receiver_id: int, content: str, db: Session, conversation_id: int = None) -> UserChatMessage:
-    # Eğer conversation_id verilmişse o konuyu al
+    # Eğer conversation_id verilmişse
     if conversation_id:
         conversation = db.query(UserConversation).filter(UserConversation.id == conversation_id).first()
     else:

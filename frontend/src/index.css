@@ -7,22 +7,18 @@
   --nav-bg-hover: #e8f3fd; /*biraz daha koyu hover için */
   --nav-icon: #3396fe; /*icon accent */
 
-  /*text */
   --text-main: #23272f;
   --text-muted: #8e98a6;
   --text-label: #181c23;
 
-  /*inputform ve nav */
   --input-bg: #f7f8fa;
   --input-border: #e2e4ea;
   --nav-bg: #f6f7fa;
 
-  /*accent ve highlight */
   --accent-color: #3396fe;
   --accent-hover: #0d6efd;
   --accent-muted: #e8f1ff;
 
-  /*gölge */
   --shadow-card: 0 2px 24px 0 #b1bfd622;
   --shadow-strong: 0 4px 16px #2468ab22;
 }
@@ -52,7 +48,6 @@ body[data-theme="dark"] {
   --nav-icon: #4da5ff;
 }
 
-/*global */
 body {
   background: var(--bg-main);
   color: var(--text-main);

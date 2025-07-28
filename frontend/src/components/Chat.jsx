@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "./ThemeContext";
 import api from "../api";
-import io from "socket.io-client";
-
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http://localhost:8000";
 
 function getUserName(user) {
   if (!user) return "Bilinmeyen Kullanıcı";
@@ -29,6 +26,33 @@ function getStatusText(status) {
       return "Bilinmiyor";
   }
 }
+
+function lastMessagePreview(msg) {
+  if (!msg) return "";
+  if (typeof msg === "string") return msg.slice(0, 40);
+
+  if (Array.isArray(msg)) {
+    if (msg.length > 0) {
+      const first = msg[0];
+      if (typeof first === "string") return first.slice(0, 40);
+      if (typeof first === "object" && first !== null) {
+        if ("text" in first) return String(first.text).slice(0, 40);
+        if ("message" in first) return String(first.message).slice(0, 40);
+        return JSON.stringify(first).slice(0, 40);
+      }
+    }
+    return ""; // boş array gelirse
+  }
+
+  if (typeof msg === "object" && msg !== null) {
+    if ("text" in msg) return String(msg.text).slice(0, 40);
+    if ("message" in msg) return String(msg.message).slice(0, 40);
+    return JSON.stringify(msg).slice(0, 40);
+  }
+
+  return String(msg).slice(0, 40);
+}
+
 function getStatusColor(status) {
   switch (status) {
     case "online":
@@ -43,11 +67,26 @@ function getStatusColor(status) {
       return "#bbb";
   }
 }
+
 function formatDate(timestamp) {
   if (!timestamp) return "";
   const d = new Date(timestamp);
   return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 }
+
+function addUniqueMessages(prev, newMsgs) {
+  const byId = {};
+  prev.forEach((m) => {
+    if (m.message_id) byId[m.message_id] = m;
+  });
+  newMsgs.forEach((m) => {
+    if (m.message_id) byId[m.message_id] = m;
+  });
+  return Object.values(byId).sort(
+    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+  );
+}
+
 function UserAvatar({ user }) {
   const name = getUserName(user);
   return (
@@ -64,8 +103,7 @@ function UserAvatar({ user }) {
     </div>
   );
 }
-
-export default function Chat({ currentUser }) {
+export default function Chat({ currentUser, socket }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
@@ -76,68 +114,62 @@ export default function Chat({ currentUser }) {
   const [newMessage, setNewMessage] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
 
-  const [socket, setSocket] = useState(null);
   const [typingUserId, setTypingUserId] = useState(null);
   const [sending, setSending] = useState(false);
 
   const messageEndRef = useRef(null);
 
-  // Socket bağlantısı ve eventler
   useEffect(() => {
-    if (!currentUser?.id) return;
-    const s = io(SOCKET_URL, { withCredentials: true });
-    window.socket = s;
-    setSocket(s);
+    if (!socket || !currentUser?.id) return;
 
-    s.on("connect", () => {
-      console.log("Socket Connected! SID:", s.id);
-      s.emit("join", { user_id: currentUser.id });
-    });
+    socket.off("receive_message");
+    socket.off("typing");
+    socket.off("user_status_update");
+    socket.off("connect_error");
 
-    s.on("receive_message", (data) => {
-      console.log(
-        "Socket: receive_message",
-        data,
-        "Current user:",
-        currentUser.id
-      );
+    const handleReceiveMessage = (data) => {
+      console.log("receive_message EVENTİ GELDİ:", data);
       if (
         selectedChat &&
         data.conversation_id === selectedChat.conversation_id
       ) {
         setMessages((prev) => {
-          const exists = prev.some(
+          const filtered = prev.filter(
             (m) =>
-              m.timestamp === data.timestamp &&
-              m.sender_id === data.sender_id &&
-              m.content === data.content
+              !(
+                m.optimistic &&
+                m.content === data.content &&
+                m.sender_id === data.sender_id &&
+                Math.abs(new Date(m.timestamp) - new Date(data.timestamp)) <
+                  2000
+              )
           );
-          if (exists) return prev;
-          return [
-            ...prev,
+          return addUniqueMessages(filtered, [
             {
-              from_me: data.sender_id === currentUser.id, // !!!!
+              from_me: data.sender_id === currentUser.id,
               sender_id: data.sender_id,
               content: data.content,
               timestamp: data.timestamp,
+              message_id: data.message_id,
             },
-          ];
+          ]);
         });
       }
-    });
+    };
 
-    s.on("typing", (data) => {
+    const handleTyping = (data) => {
       if (
         selectedChat &&
-        selectedChat.user.id === data.sender_id && // Karşıdaki kişi
+        selectedChat.user.id === data.sender_id &&
         data.sender_id !== currentUser.id &&
-        data.conversation_id === selectedChat.conversation_id // Aynı sohbet
+        data.conversation_id === selectedChat.conversation_id
       ) {
         setTypingUserId(data.sender_id);
         setTimeout(() => setTypingUserId(null), 1500);
       }
-    });
-    s.on("user_status_update", (data) => {
+    };
+
+    const handleUserStatusUpdate = (data) => {
       setConversations((prev) =>
         prev.map((c) =>
           c.user.id === data.user_id
@@ -150,13 +182,23 @@ export default function Chat({ currentUser }) {
           u.id === data.user_id ? { ...u, status: data.status } : u
         )
       );
+    };
+
+    socket.on("receive_message", handleReceiveMessage);
+    socket.on("typing", handleTyping);
+    socket.on("user_status_update", handleUserStatusUpdate);
+    socket.on("connect_error", (err) => {
+      console.error("[Socket] connect_error:", err);
     });
 
-    return () => s.disconnect();
-    // eslint-disable-next-line
-  }, [currentUser?.id, selectedChat?.conversation_id]);
+    return () => {
+      socket.off("receive_message", handleReceiveMessage);
+      socket.off("typing", handleTyping);
+      socket.off("user_status_update", handleUserStatusUpdate);
+      socket.off("connect_error");
+    };
+  }, [socket, currentUser?.id, selectedChat?.conversation_id]);
 
-  // Sohbetler ve kullanıcılar
   useEffect(() => {
     const fetchData = async () => {
       const convRes = await api.get("/conversations/my");
@@ -168,7 +210,6 @@ export default function Chat({ currentUser }) {
     fetchData();
   }, []);
 
-  // Mesajlar
   useEffect(() => {
     if (!selectedChat || !selectedChat.conversation_id) {
       setMessages([]);
@@ -179,10 +220,14 @@ export default function Chat({ currentUser }) {
         `/conversations/${selectedChat.conversation_id}/messages`
       );
       setMessages(
-        res.data.map((msg) => ({
-          ...msg,
-          from_me: msg.sender_id === currentUser.id,
-        }))
+        addUniqueMessages(
+          [],
+          (res.data || []).map((msg) => ({
+            ...msg,
+            from_me: msg.sender_id === currentUser.id,
+            message_id: msg.id,
+          }))
+        )
       );
     };
     fetchMessages();
@@ -215,43 +260,38 @@ export default function Chat({ currentUser }) {
     ]);
   };
 
-  // Mesaj gönderme (optimistik ekleme ve socket ile broadcast)
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
     setSending(true);
     const content = newMessage.trim();
-    const timestamp = new Date().toISOString();
+    const tempId = "tmp-" + Date.now();
 
-    // Localde hemen göster (optimistik)
-    setMessages((prev) => [
-      ...prev,
-      {
-        from_me: true,
-        sender_id: currentUser.id,
-        content,
-        timestamp,
-      },
-    ]);
+    setMessages((prev) =>
+      addUniqueMessages(prev, [
+        {
+          from_me: true,
+          sender_id: currentUser.id,
+          content,
+          timestamp: new Date().toISOString(),
+          message_id: tempId, // Geçici id
+          optimistic: true,
+        },
+      ])
+    );
+
     setNewMessage("");
 
-    await api.post(`/conversations/${selectedChat.conversation_id}/messages`, {
-      content,
-    });
-
-    // Socket ile hem kendine hem karşıya ilet
-    if (socket) {
-      socket.emit("message", {
-        sender_id: currentUser.id,
-        receiver_id: selectedChat.user.id,
-        content,
-        conversation_id: selectedChat.conversation_id,
-        timestamp,
-      });
+    try {
+      const res = await api.post(
+        `/conversations/${selectedChat.conversation_id}/messages`,
+        { content }
+      );
+    } catch (err) {
+      setMessages((prev) => prev.filter((msg) => msg.message_id !== tempId));
     }
     setSending(false);
   };
 
-  // Typing indicator fonksiyonu
   const handleTyping = () => {
     if (socket && selectedChat) {
       socket.emit("typing", {
@@ -310,11 +350,13 @@ export default function Chat({ currentUser }) {
             <div>
               <div style={styles.name}>{getUserName(c.user)}</div>
               <div style={styles.preview}>
-                {c.last_message
-                  ? `${c.last_message.from_me ? "Sen: " : ""}${
-                      c.last_message.content
-                    }`
-                  : "Henüz mesaj yok"}
+                <div style={styles.preview}>
+                  {c.last_message
+                    ? `${
+                        c.last_message.from_me ? "Sen: " : ""
+                      }${lastMessagePreview(c.last_message.content)}`
+                    : "Henüz mesaj yok"}
+                </div>
               </div>
             </div>
           </div>
@@ -480,7 +522,6 @@ export default function Chat({ currentUser }) {
     </div>
   );
 }
-
 const styles = {
   container: {
     display: "flex",

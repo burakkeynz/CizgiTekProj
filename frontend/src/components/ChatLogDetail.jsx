@@ -17,7 +17,22 @@ function ChatLogDetail({ logs, currentUser }) {
 
   const log = logs.find((log) => String(log.id) === String(id));
 
-  // Kullanıcının baş harfi ya da fotoğrafı
+  const messages = React.useMemo(() => {
+    if (!log) return [];
+    if (Array.isArray(log.messages)) return log.messages;
+    if (log.messages && typeof log.messages === "object") return [log.messages];
+    if (log.messages && typeof log.messages === "string") {
+      try {
+        const parsed = JSON.parse(log.messages);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === "object") return [parsed];
+      } catch {
+        return [{ text: log.messages }];
+      }
+    }
+    return [];
+  }, [log]);
+
   function getUserIcon() {
     if (currentUser?.photo_url) {
       return (
@@ -204,7 +219,7 @@ function ChatLogDetail({ logs, currentUser }) {
               marginBottom: 10,
             }}
           >
-            {log.messages.map((msg, i) => {
+            {messages.map((msg, i) => {
               const isUser = msg.role === "user";
               return (
                 <div

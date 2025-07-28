@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import useAuthCheck from "./hooks/useAuthCheck";
-
 import Navbar from "./components/Navbar";
 import Assistant from "./components/Assistant";
 import UserInfoCard from "./components/UserInfoCard";
@@ -19,14 +18,13 @@ import Chat from "./components/Chat";
 import Settings from "./components/Settings";
 import PatientDetail from "./components/PatientDetail";
 import api from "./api";
+import { io } from "socket.io-client";
 
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const alreadyRedirected = useRef(false);
-
   const pathname = location.pathname;
-
   const authCheckRoutes = [
     "/login",
     "/register",
@@ -35,18 +33,49 @@ function App() {
   ];
   const isPublicRoute = authCheckRoutes.includes(pathname);
   const shouldCheckSession = !isPublicRoute;
-
   const { hasSession, user, expiresIn, expired } =
     useAuthCheck(shouldCheckSession);
 
   const [logs, setLogs] = useState([]);
+  const [socket, setSocket] = useState(null);
+
+  // socket
+  useEffect(() => {
+    if (hasSession !== true || !user || !user.id) {
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+      }
+      return;
+    }
+    if (socket) return;
+
+    const s = io(process.env.REACT_APP_SOCKET_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      secure: true,
+      rejectUnauthorized: false,
+    });
+
+    setSocket(s);
+
+    s.on("connect", () => {
+      console.log("✅ SOCKET bağlandı, join emit", user.id);
+      s.emit("join", { user_id: user.id });
+    });
+
+    s.on("connect_error", (err) => console.error("❌ SOCKET error", err));
+
+    return () => {
+      s.disconnect();
+    };
+  }, [user?.id]);
+
   useEffect(() => {
     alreadyRedirected.current = false;
   }, [pathname]);
 
-  const handleNewLog = (log) => {
-    setLogs((prev) => [log, ...prev]);
-  };
+  const handleNewLog = (log) => setLogs((prev) => [log, ...prev]);
 
   const handleDelete = async (id) => {
     if (typeof id === "string" && id.startsWith("temp-")) {
@@ -70,19 +99,15 @@ function App() {
 
   useEffect(() => {
     if (alreadyRedirected.current) return;
-
     if (hasSession === false && shouldCheckSession) {
       alreadyRedirected.current = true;
-
       if (expired) {
         navigate("/session-expired", { replace: true });
       } else {
         navigate("/login", { replace: true });
       }
-
       return;
     }
-
     if (
       hasSession === true &&
       (pathname === "/login" || pathname === "/register")
@@ -110,7 +135,10 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/patients" element={<Patients />} />
           <Route path="/sessions" element={<Sessions />} />
-          <Route path="/chat" element={<Chat currentUser={user} />} />
+          <Route
+            path="/chat"
+            element={<Chat currentUser={user} socket={socket} />}
+          />
           <Route path="/settings" element={<Settings />} />
           <Route
             path="/logs"

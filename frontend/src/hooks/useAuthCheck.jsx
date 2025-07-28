@@ -18,6 +18,7 @@ export default function useAuthCheck(shouldRun = true) {
         const res = await api.get("/auth/me");
         if (cancelled) return;
         setUser({
+          id: res.data.id,
           username: res.data.username,
           first_name: res.data.first_name,
           last_name: res.data.last_name,

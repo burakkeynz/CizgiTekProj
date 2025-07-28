@@ -15,7 +15,7 @@ const SUPPORTED_IMAGES = [
 
 export default function FilePreviewModal({
   fileType,
-  fileKey, // Artık S3 "key" alınacak!
+  fileKey,
   fileName,
   onClose,
 }) {
@@ -24,7 +24,6 @@ export default function FilePreviewModal({
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
 
-  // Presigned url çek
   useEffect(() => {
     if (!fileKey) return;
     setLoading(true);
@@ -33,7 +32,7 @@ export default function FilePreviewModal({
     setExcelData(null);
 
     fetch(`/files/presign?key=${encodeURIComponent(fileKey)}`, {
-      credentials: "include", // cookie bazlı auth
+      credentials: "include",
     })
       .then((res) => {
         if (!res.ok) throw new Error("Dosya linki alınamadı");
@@ -48,7 +47,6 @@ export default function FilePreviewModal({
       .finally(() => setLoading(false));
   }, [fileKey]);
 
-  // Excel/csv için okuma (fileUrl değiştikçe)
   useEffect(() => {
     if (
       fileUrl &&
@@ -129,14 +127,12 @@ export default function FilePreviewModal({
 
         {!loading && fileUrl && (
           <>
-            {/* --- PDF --- */}
             {fileType === "application/pdf" && (
               <Document file={fileUrl}>
                 <Page pageNumber={1} width={540} />
               </Document>
             )}
 
-            {/* --- IMAGE --- */}
             {SUPPORTED_IMAGES.includes(fileType) && (
               <img
                 src={fileUrl}
@@ -149,7 +145,6 @@ export default function FilePreviewModal({
               />
             )}
 
-            {/* --- EXCEL/CSV --- */}
             {(fileType?.includes("spreadsheet") ||
               fileName?.endsWith(".xlsx") ||
               fileName?.endsWith(".xls") ||
@@ -182,7 +177,6 @@ export default function FilePreviewModal({
               </div>
             )}
 
-            {/* --- TXT --- */}
             {fileType === "text/plain" && (
               <iframe
                 src={fileUrl}
@@ -196,7 +190,6 @@ export default function FilePreviewModal({
               />
             )}
 
-            {/* --- DESTEKLENMEYEN --- */}
             {!fileType?.startsWith("image/") &&
               fileType !== "application/pdf" &&
               !fileType?.includes("spreadsheet") &&

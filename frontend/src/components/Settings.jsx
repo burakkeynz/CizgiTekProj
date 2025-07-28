@@ -35,7 +35,6 @@ export default function Settings() {
           overflow: "hidden",
         }}
       >
-        {/* Sol menü */}
         <div
           style={{
             width: 220,
@@ -84,7 +83,6 @@ export default function Settings() {
           })}
         </div>
 
-        {/*sağ taraf */}
         <div
           style={{
             flex: 1,

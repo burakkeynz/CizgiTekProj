@@ -8,12 +8,14 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import List
 from backend.utils.security import encrypt_message, decrypt_message
-from backend.globals import sio, connected_users
+
+import backend.globals as globals_mod 
 
 router = APIRouter(
     prefix="/conversations",
     tags=["conversations"]
 )
+
 class ConversationStartRequest(BaseModel):
     receiver_id: int
 
@@ -45,6 +47,9 @@ def get_my_conversations(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_from_cookie)
 ):
+    # DEBUG
+    print(f"[HTTP][get_my_conversations] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
+
     user_id = current_user["id"]
 
     conversations = db.query(UserConversation).filter(
@@ -58,7 +63,7 @@ def get_my_conversations(
         other_user = db.query(Users).filter(Users.id == other_user_id).first()
 
         last_msg = (
-            db.query(UserChatMessage)  
+            db.query(UserChatMessage)
             .filter(UserChatMessage.conversation_id == convo.id)
             .order_by(UserChatMessage.timestamp.desc())
             .first()
@@ -97,6 +102,8 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
+    print(f"[HTTP][get_messages] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
+
     link = db.query(UserConversationState).filter_by(
         conversation_id=conversation_id, user_id=current_user["id"]
     ).first()
@@ -111,15 +118,34 @@ def get_messages(
 
     decrypted_messages = []
     for m in messages:
+        if m.sender_id is None or m.content is None:
+            continue
         try:
             decrypted_content = decrypt_message(m.content)
         except Exception:
             decrypted_content = "[Çözülemedi]"
 
+        msg_text = ""
+        if isinstance(decrypted_content, str):
+            msg_text = decrypted_content
+        elif isinstance(decrypted_content, list):
+            msg_text = " ".join(
+                str(i.get("text") or i.get("message") or str(i))
+                for i in decrypted_content
+            )
+        elif isinstance(decrypted_content, dict):
+            msg_text = (
+                decrypted_content.get("text")
+                or decrypted_content.get("message")
+                or str(decrypted_content)
+            )
+        else:
+            msg_text = str(decrypted_content)
+
         decrypted_messages.append(MessageOut(
-            id=m.id,
-            sender_id=m.sender_id,
-            content=decrypted_content,
+            id=int(m.id),
+            sender_id=int(m.sender_id),
+            content=msg_text,
             timestamp=m.timestamp
         ))
 
@@ -133,6 +159,9 @@ async def send_message(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
+    print(f"[HTTP][send_message] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
+    print(f"[SEND_MESSAGE] API çağrıldı! {conversation_id=}, {payload.content=}")
+
     link = db.query(UserConversationState).filter_by(
         conversation_id=conversation_id, user_id=current_user["id"]
     ).first()
@@ -151,16 +180,19 @@ async def send_message(
     db.commit()
     db.refresh(message)
 
-    # iğer kullanıcıyı bulma
     conversation = db.query(UserConversation).filter_by(id=conversation_id).first()
     receiver_id = conversation.user2_id if conversation.user1_id == current_user["id"] else conversation.user1_id
 
-    # hem receiver hem sendera emitliyourm
-    receiver_sid = connected_users.get(receiver_id)
-    sender_sid = connected_users.get(current_user["id"])
+    receiver_sid = globals_mod.connected_users.get(receiver_id)
+    print("[SEND_MESSAGE] Receiver SID:", receiver_sid)
+    sender_sid = globals_mod.connected_users.get(current_user["id"])
+    print("[SEND_MESSAGE] Sender SID:", sender_sid)
+
     for sid in set([receiver_sid, sender_sid]):
-        if sid and sio:
-            await sio.emit("receive_message", {
+        if sid and globals_mod.sio:
+            print(f"[EMIT] receive_message: {sid=}, receiver={receiver_id}, sender={current_user['id']}")
+            await globals_mod.sio.emit("receive_message", {
+                "message_id": message.id,
                 "conversation_id": conversation_id,
                 "sender_id": current_user["id"],
                 "content": payload.content,
@@ -175,8 +207,8 @@ def start_conversation(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
+    print(f"[HTTP][start_conversation] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
     sender_id = current_user["id"]
-    # Aynı konuşma var mı kontrol et
     convo = db.query(UserConversation).filter(
         ((UserConversation.user1_id == sender_id) & (UserConversation.user2_id == receiver_id)) |
         ((UserConversation.user1_id == receiver_id) & (UserConversation.user2_id == sender_id))
@@ -209,6 +241,8 @@ def soft_delete_conversation(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
+    print(f"[HTTP][delete] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
+
     link = db.query(UserConversationState).filter_by(
         conversation_id=conversation_id,
         user_id=current_user["id"]

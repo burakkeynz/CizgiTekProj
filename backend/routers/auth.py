@@ -103,6 +103,7 @@ async def get_me(
     db: db_dependency,
     user_data: dict = Depends(get_current_user_from_cookie)
 ):
+    print("[DEBUG] /auth/me endpoint hit")
     db_user = db.query(Users).filter(Users.id == user_data["id"]).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")

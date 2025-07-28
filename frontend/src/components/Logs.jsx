@@ -2,7 +2,18 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 
 function getFirstQuestionAnswer(messages) {
-  const filtered = (messages || []).filter(
+  let arr = messages;
+  // Her durumda array yap
+  if (typeof arr === "string") {
+    try {
+      arr = JSON.parse(arr);
+    } catch (e) {
+      arr = [];
+    }
+  }
+  arr = Array.isArray(arr) ? arr : [];
+
+  const filtered = arr.filter(
     (m) =>
       (m.role === "user" || m.role === "model") &&
       m.text &&

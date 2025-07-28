@@ -101,7 +101,6 @@ function Assistant({ onNewLog }) {
     return () => {
       if (selectedFileUrl) URL.revokeObjectURL(selectedFileUrl);
     };
-    // eslint-disable-next-line
   }, [selectedFile]);
 
   const handleClose = () => setIsOpen(false);
@@ -174,7 +173,6 @@ function Assistant({ onNewLog }) {
     setSelectedFiles([]);
 
     try {
-      // ---- BU KISIM DEĞİŞTİ ----
       const formData = new FormData();
       formData.append("message", input || "");
       if (uploadedFiles.length > 0) {
