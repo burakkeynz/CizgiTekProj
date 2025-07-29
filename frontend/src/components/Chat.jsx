@@ -1,7 +1,9 @@
-// Chat.jsx
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
+import { useSelector } from "react-redux";
+import CallModal from "./CallModal";
+import ActiveCall from "./ActiveCall";
 import api from "../api";
 
 function getUserName(user) {
@@ -13,7 +15,6 @@ function getUserName(user) {
   if (user.username) return user.username;
   return "Bilinmeyen Kullanıcı";
 }
-
 function UserAvatar({ user }) {
   const name = getUserName(user);
   return (
@@ -44,37 +45,23 @@ function UserAvatar({ user }) {
 }
 function lastMessagePreview(content) {
   if (!content) return "";
-  // Düz string ise
   if (typeof content === "string") return content.slice(0, 40);
-
-  // Array gelirse (ör: [{"text": "..."}] gibi bir yapı)
-  if (Array.isArray(content)) {
-    // Sadece ilk elemanı göster
-    if (content.length > 0) {
-      const first = content[0];
-      if (typeof first === "object" && first !== null) {
-        return (
-          first.text?.slice(0, 40) ||
-          first.message?.slice(0, 40) ||
-          JSON.stringify(first).slice(0, 40)
-        );
-      }
-      // String ise
-      return String(first).slice(0, 40);
-    }
-    return "";
+  if (Array.isArray(content) && content.length > 0) {
+    const first = content[0];
+    if (typeof first === "object" && first !== null)
+      return (
+        first.text?.slice(0, 40) ||
+        first.message?.slice(0, 40) ||
+        JSON.stringify(first).slice(0, 40)
+      );
+    return String(first).slice(0, 40);
   }
-
-  // Dict ise
-  if (typeof content === "object" && content !== null) {
+  if (typeof content === "object" && content !== null)
     return (
       content.text?.slice(0, 40) ||
       content.message?.slice(0, 40) ||
       JSON.stringify(content).slice(0, 40)
     );
-  }
-
-  // Diğer tüm durumlar için fallback
   return String(content).slice(0, 40);
 }
 
@@ -82,6 +69,8 @@ export default function Chat({ currentUser, socket }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
+  const { conversationId } = useParams();
+  const call = useSelector((state) => state.call);
 
   const [conversations, setConversations] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -123,7 +112,7 @@ export default function Chat({ currentUser, socket }) {
         background: "#10131a",
       }}
     >
-      {/* Sidebar */}
+      {/* SOL PANEL */}
       <div
         style={{
           width: 320,
@@ -148,14 +137,7 @@ export default function Chat({ currentUser, socket }) {
             background: "#161b22",
           }}
         >
-          <span
-            style={{
-              marginBottom: 0,
-              fontWeight: 700,
-              fontSize: 21,
-              color: "#e8ecf4",
-            }}
-          >
+          <span style={{ fontWeight: 700, fontSize: 21, color: "#e8ecf4" }}>
             Sohbetler
           </span>
           <button
@@ -208,7 +190,12 @@ export default function Chat({ currentUser, socket }) {
               fontSize: 16,
               borderRadius: 10,
               transition: "background .17s",
-              background: "transparent",
+              background:
+                String(conversationId) === String(c.conversation_id)
+                  ? isDark
+                    ? "#222b39"
+                    : "#dde5fa"
+                  : "transparent",
               marginBottom: 2,
             }}
             onClick={() => handleUserSelect(c.user)}
@@ -304,17 +291,62 @@ export default function Chat({ currentUser, socket }) {
           </div>
         )}
       </div>
-      {/* Sağ panel (Konuşma paneli veya boş) */}
+      {/* ORTA PANEL */}
       <div
         style={{
           flex: 1,
+          position: "relative",
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
           minWidth: 0,
+          background: isDark ? "#181a1b" : "#fff",
         }}
       >
-        <Outlet context={{ currentUser, socket, conversations }} />
+        {/* SADECE ORTA PANELİ KAPLAYAN MODAL */}
+        {call.incoming && !call.inCall && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 20,
+              background: "rgba(20,24,34,0.48)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <CallModal socket={socket} currentUser={currentUser} />
+          </div>
+        )}
+        {/* ARAMA KABUL EDİLİNCE ORTADA ÜSTTE CALL, ALTA CHAT */}
+        {call.inCall ? (
+          <ActiveCall socket={socket} currentUser={currentUser}>
+            {conversationId ? (
+              <Outlet context={{ currentUser, socket, conversations }} />
+            ) : (
+              <div />
+            )}
+          </ActiveCall>
+        ) : conversationId ? (
+          <Outlet context={{ currentUser, socket, conversations }} />
+        ) : (
+          <div
+            style={{
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: isDark ? "#aaa" : "#555",
+              fontSize: 24,
+              letterSpacing: 0.3,
+              fontWeight: 500,
+            }}
+          >
+            Bir sohbet seçin veya yeni sohbet başlatın.
+          </div>
+        )}
       </div>
     </div>
   );

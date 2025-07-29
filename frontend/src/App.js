@@ -1,4 +1,3 @@
-// App.js
 import React, { useRef, useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import useAuthCheck from "./hooks/useAuthCheck";
@@ -21,6 +20,9 @@ import Settings from "./components/Settings";
 import PatientDetail from "./components/PatientDetail";
 import api from "./api";
 import { io } from "socket.io-client";
+import CallModal from "./components/CallModal";
+import ActiveCall from "./components/ActiveCall";
+import { useSelector } from "react-redux";
 
 function App() {
   const location = useLocation();
@@ -40,6 +42,8 @@ function App() {
 
   const [logs, setLogs] = useState([]);
   const [socket, setSocket] = useState(null);
+
+  const call = useSelector((state) => state.call);
 
   useEffect(() => {
     if (hasSession !== true || !user || !user.id) {
@@ -66,6 +70,7 @@ function App() {
     return () => {
       s.disconnect();
     };
+    // eslint-disable-next-line
   }, [user?.id]);
 
   useEffect(() => {
