@@ -2,6 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme } from "./ThemeContext";
 import api from "../api";
 
+//Yazıyor... kısmı için DotLoader
+function DotLoader() {
+  return (
+    <span style={{ display: "inline-block", minWidth: 30 }}>
+      <span className="dot">.</span>
+      <span className="dot">.</span>
+      <span className="dot">.</span>
+      <style>
+        {`
+          .dot { animation: blink 1.4s infinite both; font-size: 20px; color: #bbb;}
+          .dot:nth-child(2) { animation-delay: .2s; }
+          .dot:nth-child(3) { animation-delay: .4s; }
+          @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
+        `}
+      </style>
+    </span>
+  );
+}
+
+//Yardımcı fonks.
 function getUserName(user) {
   if (!user) return "Bilinmeyen Kullanıcı";
   if (user.name) return user.name;
@@ -30,7 +50,6 @@ function getStatusText(status) {
 function lastMessagePreview(msg) {
   if (!msg) return "";
   if (typeof msg === "string") return msg.slice(0, 40);
-
   if (Array.isArray(msg)) {
     if (msg.length > 0) {
       const first = msg[0];
@@ -41,15 +60,13 @@ function lastMessagePreview(msg) {
         return JSON.stringify(first).slice(0, 40);
       }
     }
-    return ""; // boş array gelirse
+    return "";
   }
-
   if (typeof msg === "object" && msg !== null) {
     if ("text" in msg) return String(msg.text).slice(0, 40);
     if ("message" in msg) return String(msg.message).slice(0, 40);
     return JSON.stringify(msg).slice(0, 40);
   }
-
   return String(msg).slice(0, 40);
 }
 
@@ -103,6 +120,7 @@ function UserAvatar({ user }) {
     </div>
   );
 }
+
 export default function Chat({ currentUser, socket }) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -114,11 +132,15 @@ export default function Chat({ currentUser, socket }) {
   const [newMessage, setNewMessage] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
 
+  //Yazıyor... animasyonu için state
   const [typingUserId, setTypingUserId] = useState(null);
-  const [sending, setSending] = useState(false);
+  const [typingActiveAt, setTypingActiveAt] = useState(null);
+  const typingTimeoutRef = useRef(null);
 
+  const [sending, setSending] = useState(false);
   const messageEndRef = useRef(null);
 
+  //socket events
   useEffect(() => {
     if (!socket || !currentUser?.id) return;
 
@@ -128,7 +150,6 @@ export default function Chat({ currentUser, socket }) {
     socket.off("connect_error");
 
     const handleReceiveMessage = (data) => {
-      console.log("receive_message EVENTİ GELDİ:", data);
       if (
         selectedChat &&
         data.conversation_id === selectedChat.conversation_id
@@ -165,7 +186,7 @@ export default function Chat({ currentUser, socket }) {
         data.conversation_id === selectedChat.conversation_id
       ) {
         setTypingUserId(data.sender_id);
-        setTimeout(() => setTypingUserId(null), 1500);
+        setTypingActiveAt(Date.now()); // Her typing eventinde güncelle
       }
     };
 
@@ -199,17 +220,31 @@ export default function Chat({ currentUser, socket }) {
     };
   }, [socket, currentUser?.id, selectedChat?.conversation_id]);
 
+  //Yazıyor debounce kısmı
+  useEffect(() => {
+    if (typingUserId === selectedChat?.user?.id && typingActiveAt) {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        setTypingUserId(null);
+        setTypingActiveAt(null);
+      }, 1500);
+    }
+    return () =>
+      typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
+  }, [typingUserId, typingActiveAt, selectedChat?.user?.id]);
+
+  //Sohbetler ve kullanıcılar yükleniyor
   useEffect(() => {
     const fetchData = async () => {
       const convRes = await api.get("/conversations/my");
       setConversations(convRes.data);
-
       const availRes = await api.get("/users/available");
       setAvailableUsers(availRes.data);
     };
     fetchData();
   }, []);
 
+  //Seçilen sohbet değişince mesajları getir
   useEffect(() => {
     if (!selectedChat || !selectedChat.conversation_id) {
       setMessages([]);
@@ -233,10 +268,12 @@ export default function Chat({ currentUser, socket }) {
     fetchMessages();
   }, [selectedChat, currentUser?.id]);
 
+  //Scroll to bottom
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingUserId]);
+  }, [messages, typingActiveAt]);
 
+  //Kullanıcı seçince yeni sohbet açar
   const handleUserSelect = async (user) => {
     setShowDropdown(false);
     setMessages([]);
@@ -260,6 +297,7 @@ export default function Chat({ currentUser, socket }) {
     ]);
   };
 
+  //MEsaj gönderme
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
     setSending(true);
@@ -282,7 +320,7 @@ export default function Chat({ currentUser, socket }) {
     setNewMessage("");
 
     try {
-      const res = await api.post(
+      await api.post(
         `/conversations/${selectedChat.conversation_id}/messages`,
         { content }
       );
@@ -292,7 +330,10 @@ export default function Chat({ currentUser, socket }) {
     setSending(false);
   };
 
-  const handleTyping = () => {
+  // Mesaj güncelleme ve typing emit
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
+
     if (socket && selectedChat) {
       socket.emit("typing", {
         sender_id: currentUser.id,
@@ -350,13 +391,11 @@ export default function Chat({ currentUser, socket }) {
             <div>
               <div style={styles.name}>{getUserName(c.user)}</div>
               <div style={styles.preview}>
-                <div style={styles.preview}>
-                  {c.last_message
-                    ? `${
-                        c.last_message.from_me ? "Sen: " : ""
-                      }${lastMessagePreview(c.last_message.content)}`
-                    : "Henüz mesaj yok"}
-                </div>
+                {c.last_message
+                  ? `${
+                      c.last_message.from_me ? "Sen: " : ""
+                    }${lastMessagePreview(c.last_message.content)}`
+                  : "Henüz mesaj yok"}
               </div>
             </div>
           </div>
@@ -475,9 +514,12 @@ export default function Chat({ currentUser, socket }) {
                   </div>
                 </div>
               ))}
-              {typingUserId === selectedChat.user.id && (
-                <div style={styles.typing}>Yazıyor...</div>
+              {typingUserId === selectedChat?.user?.id && typingActiveAt && (
+                <div style={styles.typing}>
+                  <DotLoader />
+                </div>
               )}
+
               <div ref={messageEndRef} />
             </div>
             <div
@@ -493,8 +535,7 @@ export default function Chat({ currentUser, socket }) {
                   color: isDark ? "#eee" : "#23272f",
                 }}
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleTyping}
+                onChange={handleInputChange}
                 placeholder="Mesaj yaz..."
                 onKeyUp={(e) => {
                   if (e.key === "Enter") sendMessage();
@@ -522,56 +563,67 @@ export default function Chat({ currentUser, socket }) {
     </div>
   );
 }
+
+//styles
 const styles = {
   container: {
     display: "flex",
     height: "100vh",
+    fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+    background: "#10131a",
   },
   sidebar: {
     width: 320,
-    borderRight: "1px solid #ccc",
+    borderRight: "1.5px solid #242a35",
+    background: "#161b22",
+    color: "#eceef2",
     padding: 0,
     overflowY: "auto",
     position: "relative",
+    boxShadow: "2px 0 10px #0002",
   },
   sidebarHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "18px 22px 10px 22px",
+    padding: "18px 22px 12px 22px",
     fontWeight: 700,
-    fontSize: 21,
-    position: "relative",
+    fontSize: 22,
+    borderBottom: "1px solid #23272f",
+    background: "#161b22",
   },
   timestamp: {
     fontSize: 11,
-    color: "#ccc",
-    marginTop: 6,
+    color: "#747c8e",
+    marginTop: 7,
     textAlign: "right",
     minWidth: 48,
   },
   typing: {
-    color: "#bbb",
-    fontSize: 13,
-    margin: 8,
+    color: "#8ea0c6",
+    fontSize: 20,
+    margin: 7,
     fontStyle: "italic",
     alignSelf: "flex-start",
+    minHeight: 28,
   },
   plusBtn: {
     fontWeight: 700,
     border: "none",
     borderRadius: "50%",
-    width: 30,
-    height: 30,
-    fontSize: 24,
+    width: 36,
+    height: 36,
+    fontSize: 26,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
-    boxShadow: "0 2px 8px #0001",
     marginLeft: 6,
     marginTop: 2,
-    transition: "background .2s",
+    background: "linear-gradient(135deg, #5c93f7 0%, #4285f4 100%)",
+    color: "#fff",
+    boxShadow: "0 2px 12px #3571c555, 0 1px 4px #0001",
+    transition: "background .17s, box-shadow .17s",
   },
   dropdown: {
     position: "absolute",
@@ -579,12 +631,14 @@ const styles = {
     left: 0,
     right: 0,
     zIndex: 999,
-    borderRadius: 12,
-    boxShadow: "0 8px 32px #0003",
-    padding: "18px 8px 8px 8px",
-    minHeight: 80,
+    borderRadius: 14,
+    boxShadow: "0 8px 32px #0006",
+    padding: "16px 10px 10px 10px",
+    minHeight: 85,
     minWidth: 240,
-    animation: "dropdownAnim 0.15s",
+    background: "#232b3b",
+    color: "#eee",
+    animation: "dropdownAnim 0.13s",
   },
   dropdownHeader: {
     display: "flex",
@@ -592,29 +646,34 @@ const styles = {
     justifyContent: "space-between",
     marginBottom: 8,
     padding: "0 8px",
+    color: "#cfd6ea",
+    fontWeight: 600,
   },
   header: {
     marginBottom: 0,
     fontWeight: 700,
-    fontSize: 20,
+    fontSize: 21,
+    color: "#e8ecf4",
   },
   userItem: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-    padding: "12px 14px",
+    gap: 13,
+    padding: "13px 16px",
     cursor: "pointer",
-    borderBottom: "1px solid #eee",
-    fontSize: 15,
-    borderRadius: 8,
-    transition: "background .15s",
+    borderBottom: "1px solid #202534",
+    fontSize: 16,
+    borderRadius: 10,
+    transition: "background .17s",
+    background: "transparent",
+    marginBottom: 2,
   },
   avatar: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: "50%",
     overflow: "hidden",
-    background: "#ddd",
+    background: "#344153",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -628,73 +687,95 @@ const styles = {
   },
   initial: {
     fontWeight: "bold",
-    color: "#555",
+    color: "#fff",
     fontSize: 18,
+    letterSpacing: 1,
   },
   name: {
     fontWeight: 600,
-    fontSize: 15,
+    fontSize: 16,
+    color: "#e7ecfb",
   },
   preview: {
-    fontSize: 12,
-    color: "#777",
+    fontSize: 13,
+    color: "#8ea0c6",
     marginTop: 2,
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    maxWidth: 175,
   },
   chatArea: {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    background: "#fff",
+    background: "#131722",
   },
   chatHeader: {
-    padding: 16,
-    borderBottom: "1px solid #ccc",
+    padding: 19,
+    borderBottom: "1px solid #22293a",
     fontWeight: 700,
     fontSize: 18,
+    background: "#181b26",
+    color: "#f4f8fd",
   },
   messages: {
     flex: 1,
-    padding: 16,
+    padding: 20,
     display: "flex",
     flexDirection: "column",
-    gap: 10,
+    gap: 13,
     overflowY: "auto",
-    background: "#fafafa",
+    background: "#181b26",
   },
   message: {
-    maxWidth: "60%",
-    padding: "10px 14px",
-    borderRadius: 14,
+    maxWidth: "63%",
+    padding: "12px 18px",
+    borderRadius: 19,
+    fontSize: 15,
+    wordBreak: "break-word",
+    boxShadow: "0 2px 12px #0002",
+    background: "#26334b",
+    color: "#e8eef7",
   },
   inputRow: {
     display: "flex",
-    borderTop: "1px solid #ccc",
-    padding: 12,
-    background: "#f4f4f4",
+    borderTop: "1px solid #23293a",
+    padding: 14,
+    background: "#161b22",
+    alignItems: "center",
+    gap: 8,
   },
   input: {
     flex: 1,
-    padding: 10,
-    borderRadius: 20,
-    border: "1px solid #aaa",
+    padding: "13px 16px",
+    borderRadius: 24,
+    border: "1.5px solid #26334b",
     outline: "none",
     fontSize: 15,
+    background: "#1d2230",
+    color: "#e8eef7",
+    boxShadow: "0 1px 2px #0001",
+    marginRight: 2,
   },
   sendBtn: {
     marginLeft: 8,
-    padding: "0 20px",
-    borderRadius: 20,
+    padding: "0 28px",
+    borderRadius: 23,
     border: "none",
-    background: "#4caf50",
+    background: "linear-gradient(135deg, #5c93f7 0%, #4285f4 100%)",
     color: "white",
     fontWeight: 600,
     cursor: "pointer",
-    fontSize: 15,
+    fontSize: 16,
+    height: 38,
+    boxShadow: "0 1px 10px #2862c166",
+    transition: "background .19s, box-shadow .19s",
   },
   empty: {
     margin: "auto",
-    fontSize: 18,
-    color: "#888",
+    fontSize: 19,
+    color: "#aaa",
     textAlign: "center",
   },
 };
