@@ -122,4 +122,62 @@ async def disconnect(sid):
     else:
         print(f"[Socket][DISCONNECT] SID={sid} için eşleşen user_id bulunamadı!")
 
+# WebRTC Signaling Events
+
+#debug
+# @sio.event
+# async def webrtc_offer(sid, data):
+#     print("=== webrtc_offer event fired ===", sid, data)
+
+# @sio.on("webrtc_offer")
+# async def webrtc_offer_named(sid, data):
+#     print("=== webrtc_offer [NAMED] event fired ===", sid, data)
+
+@sio.on
+async def webrtc_offer(sid, data):
+    print(f"[WebRTC][OFFER] GELDİ! sid={sid} | data={data}")
+    print(f"[WebRTC][OFFER] connected_users: {globals_mod.connected_users}")
+    to_user = str(data["to_user_id"])
+    to_sid = globals_mod.connected_users.get(to_user)
+    print(f"[WebRTC][OFFER] to_user_id={to_user} => to_sid={to_sid}")
+    if to_sid:
+        await sio.emit("webrtc_offer", data, to=to_sid)
+        print(f"[WebRTC][OFFER] EMIT EDİLDİ -> {to_user} ({to_sid})")
+    else:
+        print(f"[WebRTC][OFFER] Kullanıcı çevrimdışı! {to_user}")
+
+    
+# Diğerleri de aynı şekilde
+@sio.on
+async def webrtc_answer(sid, data):
+    print(f"[WebRTC][ANSWER] GELDİ! sid={sid} | data={data}")
+    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
+    print(f"[WebRTC][ANSWER] to_user_id={data['to_user_id']} => to_sid={to_sid}")
+    if to_sid:
+        await sio.emit("webrtc_answer", data, to=to_sid)
+        print(f"[WebRTC][ANSWER] EMIT EDİLDİ -> {to_sid}")
+    else:
+        print(f"[WebRTC][ANSWER] Kullanıcı çevrimdışı!")
+
+@sio.on
+async def webrtc_ice_candidate(sid, data):
+    print(f"[WebRTC][ICE] GELDİ! sid={sid} | data={data}")
+    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
+    print(f"[WebRTC][ICE] to_user_id={data['to_user_id']} => to_sid={to_sid}")
+    if to_sid:
+        await sio.emit("webrtc_ice_candidate", data, to=to_sid)
+        print(f"[WebRTC][ICE] EMIT EDİLDİ -> {to_sid}")
+    else:
+        print(f"[WebRTC][ICE] Kullanıcı çevrimdışı!")
+
+@sio.on
+async def webrtc_call_end(sid, data):
+    print(f"[WebRTC][CALL END] GELDİ! sid={sid} | data={data}")
+    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
+    print(f"[WebRTC][CALL END] to_user_id={data['to_user_id']} => to_sid={to_sid}")
+    if to_sid:
+        await sio.emit("webrtc_call_end", data, to=to_sid)
+        print(f"[WebRTC][CALL END] EMIT EDİLDİ -> {to_sid}")
+    else:
+        print(f"[WebRTC][CALL END] Kullanıcı çevrimdışı!")
 sio_app = app

@@ -1,3 +1,4 @@
+// App.js
 import React, { useRef, useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import useAuthCheck from "./hooks/useAuthCheck";
@@ -15,6 +16,7 @@ import ChatLogDetail from "./components/ChatLogDetail";
 import Patients from "./components/Patients";
 import Sessions from "./components/Sessions";
 import Chat from "./components/Chat";
+import ChatDetail from "./components/ChatDetail";
 import Settings from "./components/Settings";
 import PatientDetail from "./components/PatientDetail";
 import api from "./api";
@@ -39,7 +41,6 @@ function App() {
   const [logs, setLogs] = useState([]);
   const [socket, setSocket] = useState(null);
 
-  // socket
   useEffect(() => {
     if (hasSession !== true || !user || !user.id) {
       if (socket) {
@@ -49,21 +50,17 @@ function App() {
       return;
     }
     if (socket) return;
-
     const s = io(process.env.REACT_APP_SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       secure: true,
       rejectUnauthorized: false,
     });
-
     setSocket(s);
 
     s.on("connect", () => {
-      console.log("✅ SOCKET bağlandı, join emit", user.id);
       s.emit("join", { user_id: user.id });
     });
-
     s.on("connect_error", (err) => console.error("❌ SOCKET error", err));
 
     return () => {
@@ -76,7 +73,6 @@ function App() {
   }, [pathname]);
 
   const handleNewLog = (log) => setLogs((prev) => [log, ...prev]);
-
   const handleDelete = async (id) => {
     if (typeof id === "string" && id.startsWith("temp-")) {
       setLogs((prev) => prev.filter((log) => log.id !== id));
@@ -138,7 +134,9 @@ function App() {
           <Route
             path="/chat"
             element={<Chat currentUser={user} socket={socket} />}
-          />
+          >
+            <Route path=":conversationId" element={<ChatDetail />} />
+          </Route>
           <Route path="/settings" element={<Settings />} />
           <Route
             path="/logs"
@@ -173,5 +171,4 @@ function App() {
     </div>
   );
 }
-
 export default App;
