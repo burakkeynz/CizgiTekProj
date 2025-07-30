@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
 import { useSelector } from "react-redux";
-import CallModal from "./CallModal";
 import ActiveCall from "./ActiveCall";
 import api from "../api";
 
@@ -316,11 +315,9 @@ export default function Chat({ currentUser, socket }) {
               alignItems: "center",
               justifyContent: "center",
             }}
-          >
-            <CallModal socket={socket} currentUser={currentUser} />
-          </div>
+          ></div>
         )}
-        {/* ARAMA KABUL EDİLİNCE ORTADA ÜSTTE CALL, ALTA CHAT */}
+
         {call.inCall ? (
           <ActiveCall socket={socket} currentUser={currentUser}>
             {conversationId ? (

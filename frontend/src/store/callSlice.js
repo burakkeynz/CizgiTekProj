@@ -3,10 +3,11 @@ import { createSlice } from "@reduxjs/toolkit";
 const initialState = {
   inCall: false, // Aktif görüşme var mı
   incoming: null, // Gelen arama teklifi
-  peerUser: null, // Karşıdaki kişi
+  peerUser: null, // Karşıdaki kişi objesi
   callType: null, // "video" | "audio"
   isStarter: false, // Aramayı başlatan taraf mıyız
-  micOn: true,
+  micOn: true, // Görüşme sırasında mikrofon açık mı
+  camOn: true, // Görüşme sırasında kamera açık mı
 };
 
 const callSlice = createSlice({
@@ -14,6 +15,7 @@ const callSlice = createSlice({
   initialState,
   reducers: {
     startCall: (state, action) => {
+      console.log("[DEBUG][SLICE][startCall] action:", action, "state:", state);
       state.inCall = true;
       state.callType = action.payload.type;
       state.peerUser = action.payload.peerUser;
@@ -21,6 +23,10 @@ const callSlice = createSlice({
       state.isStarter = true;
     },
     receiveCall: (state, action) => {
+      console.log(
+        "[DEBUG][SLICE][receiveCall] action.payload:",
+        action.payload
+      );
       state.inCall = false;
       state.incoming = action.payload;
       state.callType = action.payload.call_type;
@@ -28,31 +34,27 @@ const callSlice = createSlice({
       state.isStarter = false;
     },
     answerCall: (state) => {
+      console.log("[DEBUG][SLICE][answerCall] state:", state);
       state.inCall = true;
-      state.incoming = null;
+      // state.incoming = null;
       state.isStarter = false;
     },
     endCall: (state) => {
+      console.log("[DEBUG][SLICE][endCall] state:", state);
+      // SADECE TEK END CALL!
       state.inCall = false;
       state.incoming = null;
       state.peerUser = null;
       state.callType = null;
       state.isStarter = false;
+      state.micOn = true;
+      state.camOn = true;
     },
     toggleMic: (state) => {
       state.micOn = !state.micOn;
     },
     toggleCam: (state) => {
       state.camOn = !state.camOn;
-    },
-    endCall: (state) => {
-      state.inCall = false;
-      state.incoming = null;
-      state.peerUser = null;
-      state.callType = null;
-      state.isStarter = false;
-      state.micOn = true; // call bitince reset
-      state.camOn = true;
     },
   },
 });

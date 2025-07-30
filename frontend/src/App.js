@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import store from "./store";
 import useAuthCheck from "./hooks/useAuthCheck";
 import Navbar from "./components/Navbar";
 import Assistant from "./components/Assistant";
@@ -22,7 +23,8 @@ import api from "./api";
 import { io } from "socket.io-client";
 import CallModal from "./components/CallModal";
 import ActiveCall from "./components/ActiveCall";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import { receiveCall } from "./store/callSlice";
 
 function App() {
   const location = useLocation();
@@ -44,6 +46,7 @@ function App() {
   const [socket, setSocket] = useState(null);
 
   const call = useSelector((state) => state.call);
+  const dispatch = useDispatch();
 
   useEffect(() => {
     if (hasSession !== true || !user || !user.id) {
@@ -70,8 +73,17 @@ function App() {
     return () => {
       s.disconnect();
     };
-    // eslint-disable-next-line
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onOffer = (data) => {
+      console.log("[DEBUG][GLOBAL][WebRTC][OFFER] ALINDI (App.js):", data);
+      dispatch(receiveCall(data));
+    };
+    socket.on("webrtc_offer", onOffer);
+    return () => socket.off("webrtc_offer", onOffer);
+  }, [socket, dispatch]);
 
   useEffect(() => {
     alreadyRedirected.current = false;
@@ -88,6 +100,22 @@ function App() {
       setLogs((prev) => prev.filter((log) => log.id !== id));
     } catch (e) {}
   };
+
+  //Debug
+  useEffect(() => {
+    if (!socket) return;
+    const onOffer = (data) => {
+      console.log("[DEBUG][App.js][OFFER] Alındı:", data);
+      dispatch(receiveCall(data));
+      setTimeout(() => {
+        // Redux state'i gerçekten güncelleniyor mu?
+        const call = store.getState().call;
+        console.log("[DEBUG][App.js][AFTER_DISPATCH] call slice:", call);
+      }, 300);
+    };
+    socket.on("webrtc_offer", onOffer);
+    return () => socket.off("webrtc_offer", onOffer);
+  }, [socket, dispatch]);
 
   useEffect(() => {
     if (hasSession) {
@@ -127,6 +155,7 @@ function App() {
         display: "flex",
         minHeight: "100vh",
         background: "var(--bg-main)",
+        position: "relative",
       }}
     >
       {showLayout && <Navbar />}
@@ -173,6 +202,8 @@ function App() {
           <Assistant onNewLog={handleNewLog} />
         </div>
       )}
+      {/* ==== CALL MODAL GLOBAL ==== */}
+      {showLayout && <CallModal socket={socket} currentUser={user} />}
     </div>
   );
 }

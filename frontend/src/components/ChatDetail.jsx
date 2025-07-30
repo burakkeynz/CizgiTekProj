@@ -118,15 +118,6 @@ export default function ChatDetail() {
   const selectedChat = conversations?.find(
     (c) => String(c.conversation_id) === String(conversationId)
   );
-
-  // --- OFFER dinleme ---
-  useEffect(() => {
-    if (!socket) return;
-    const onOffer = (data) => dispatch(receiveCall(data));
-    socket.on("webrtc_offer", onOffer);
-    return () => socket.off("webrtc_offer", onOffer);
-  }, [socket, dispatch]);
-
   // --- socket/disconnect/redirect ---
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId || !selectedChat) {
@@ -214,10 +205,18 @@ export default function ChatDetail() {
   // --- Arama başlatıcılar ---
   function handleAudioCall() {
     if (!selectedChat) return;
+    console.log("[DEBUG][CALL] Sesli arama başlatılıyor!", {
+      from: currentUser.id,
+      to: selectedChat.user.id,
+    });
     dispatch(startCall({ type: "audio", peerUser: selectedChat.user }));
   }
   function handleVideoCall() {
     if (!selectedChat) return;
+    console.log("[DEBUG][CALL] Görüntülü arama başlatılıyor!", {
+      from: currentUser.id,
+      to: selectedChat.user.id,
+    });
     dispatch(startCall({ type: "video", peerUser: selectedChat.user }));
   }
 
