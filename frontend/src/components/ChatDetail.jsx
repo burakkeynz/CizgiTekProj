@@ -3,13 +3,7 @@ import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
 import { useSelector, useDispatch } from "react-redux";
 import { setMessages, addMessage } from "../store/chatSlice";
-import {
-  receiveCall,
-  startCall,
-  endCall,
-  toggleMic,
-  toggleCam,
-} from "../store/callSlice";
+import { startCall } from "../store/callSlice";
 import ActiveCall from "./ActiveCall";
 import api from "../api";
 
@@ -99,6 +93,8 @@ export default function ChatDetail() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+
+  // Redux'taki mesajları çek
   const EMPTY_ARRAY = [];
   const selectMessages = (state, conversationId) =>
     state.chat.messages[conversationId] || EMPTY_ARRAY;
@@ -106,19 +102,24 @@ export default function ChatDetail() {
     selectMessages(state, conversationId)
   );
   const callState = useSelector((state) => state.call);
-  const { inCall, peerUser, callType, isStarter } = callState;
+  const { inCall } = callState;
   const messageEndRef = useRef(null);
   const fileInputRef = useRef();
   const [newMessage, setNewMessage] = useState("");
-  const [typingUserId, setTypingUserId] = useState(null);
-  const [typingActiveAt, setTypingActiveAt] = useState(null);
-  const [sending, setSending] = useState(false);
-  const typingTimeoutRef = useRef(null);
 
+  // ---- TYPING STATE & LOGIC ----
+  const [typingVisible, setTypingVisible] = useState(false);
+  const typingTimeout = useRef(null);
+  const lastTypingAt = useRef(0);
+  const TYPING_EMIT_INTERVAL = 1000; // ms
+  const lastEmitTimeRef = useRef(0);
+
+  // Aktif sohbet bul
   const selectedChat = conversations?.find(
     (c) => String(c.conversation_id) === String(conversationId)
   );
-  // --- socket/disconnect/redirect ---
+
+  // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at ---
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId || !selectedChat) {
       navigate("/chat", { replace: true });
@@ -140,7 +141,7 @@ export default function ChatDetail() {
       const res = await api.get(`/conversations/${conversationId}/messages`);
       const messageList = (res.data || []).map((msg) => ({
         ...msg,
-        from_me: msg.sender_id === currentUser.id,
+        from_me: String(msg.sender_id) === String(currentUser.id),
         message_id: msg.id,
       }));
       dispatch(setMessages({ conversationId, messages: messageList }));
@@ -148,17 +149,20 @@ export default function ChatDetail() {
     fetchMessages();
   }, [conversationId, selectedChat, currentUser?.id, dispatch]);
 
-  // --- Yeni mesaj/typing socket olayları ---
+  // --- Socket eventleri: mesaj & typing ---
   useEffect(() => {
     if (!socket || !currentUser?.id || !selectedChat) return;
+
     const handleReceiveMessage = (data) => {
-      if (data.conversation_id === selectedChat.conversation_id) {
+      if (
+        String(data.conversation_id) === String(selectedChat.conversation_id)
+      ) {
         dispatch(
           addMessage({
-            conversationId: data.conversation_id,
+            conversationId: String(data.conversation_id),
             message: {
-              from_me: data.sender_id === currentUser.id,
-              sender_id: data.sender_id,
+              from_me: String(data.sender_id) === String(currentUser.id),
+              sender_id: String(data.sender_id),
               content: data.content,
               timestamp: data.timestamp,
               message_id: data.message_id,
@@ -167,56 +171,62 @@ export default function ChatDetail() {
         );
       }
     };
+
     const handleTyping = (data) => {
       if (
-        selectedChat.user.id === data.sender_id &&
-        data.sender_id !== currentUser.id &&
-        data.conversation_id === selectedChat.conversation_id
+        String(selectedChat.user.id) === String(data.sender_id) &&
+        String(data.conversation_id) === String(selectedChat.conversation_id) &&
+        String(data.sender_id) !== String(currentUser.id)
       ) {
-        setTypingUserId(data.sender_id);
-        setTypingActiveAt(Date.now());
+        setTypingVisible(true);
+        lastTypingAt.current = Date.now();
+
+        if (typingTimeout.current) clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => {
+          if (Date.now() - lastTypingAt.current >= 2000) {
+            setTypingVisible(false);
+          }
+        }, 2000);
       }
     };
+
     socket.on("receive_message", handleReceiveMessage);
     socket.on("typing", handleTyping);
+
     return () => {
       socket.off("receive_message", handleReceiveMessage);
       socket.off("typing", handleTyping);
+      if (typingTimeout.current) clearTimeout(typingTimeout.current);
     };
   }, [socket, currentUser?.id, selectedChat, dispatch]);
 
-  // --- Typing timeout ---
-  useEffect(() => {
-    if (typingUserId === selectedChat?.user?.id && typingActiveAt) {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        setTypingUserId(null);
-        setTypingActiveAt(null);
-      }, 1500);
+  // --- Input Change: Throttled Typing Emit ---
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
+    if (socket && selectedChat) {
+      const now = Date.now();
+      if (now - lastEmitTimeRef.current > TYPING_EMIT_INTERVAL) {
+        socket.emit("typing", {
+          sender_id: String(currentUser.id),
+          receiver_id: String(selectedChat.user.id),
+          conversation_id: String(selectedChat.conversation_id),
+        });
+        lastEmitTimeRef.current = now;
+      }
     }
-    return () =>
-      typingTimeoutRef.current && clearTimeout(typingTimeoutRef.current);
-  }, [typingUserId, typingActiveAt, selectedChat?.user?.id]);
+  };
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingActiveAt]);
+  }, [messages, typingVisible]);
 
   // --- Arama başlatıcılar ---
   function handleAudioCall() {
     if (!selectedChat) return;
-    console.log("[DEBUG][CALL] Sesli arama başlatılıyor!", {
-      from: currentUser.id,
-      to: selectedChat.user.id,
-    });
     dispatch(startCall({ type: "audio", peerUser: selectedChat.user }));
   }
   function handleVideoCall() {
     if (!selectedChat) return;
-    console.log("[DEBUG][CALL] Görüntülü arama başlatılıyor!", {
-      from: currentUser.id,
-      to: selectedChat.user.id,
-    });
     dispatch(startCall({ type: "video", peerUser: selectedChat.user }));
   }
 
@@ -231,38 +241,12 @@ export default function ChatDetail() {
   }
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
-    setSending(true);
-    const content = newMessage.trim();
-    const tempId = "tmp-" + Date.now();
-    dispatch(
-      addMessage({
-        conversationId,
-        message: {
-          from_me: true,
-          sender_id: currentUser.id,
-          content,
-          timestamp: new Date().toISOString(),
-          message_id: tempId,
-          optimistic: true,
-        },
-      })
-    );
     setNewMessage("");
     try {
-      await api.post(`/conversations/${conversationId}/messages`, { content });
-    } catch (err) {}
-    setSending(false);
-  };
-
-  const handleInputChange = (e) => {
-    setNewMessage(e.target.value);
-    if (socket && selectedChat) {
-      socket.emit("typing", {
-        sender_id: currentUser.id,
-        receiver_id: selectedChat.user.id,
-        conversation_id: selectedChat.conversation_id,
+      await api.post(`/conversations/${String(conversationId)}/messages`, {
+        content: newMessage.trim(),
       });
-    }
+    } catch (err) {}
   };
 
   if (!selectedChat) return null;
@@ -281,7 +265,7 @@ export default function ChatDetail() {
     transition: "background .15s",
   };
 
-  // Ana return
+  // --- UI Render ---
   return (
     <div
       style={{
@@ -293,7 +277,7 @@ export default function ChatDetail() {
         position: "relative",
       }}
     >
-      {/* --- Call Bar: Tam width Discord tarzı üstte --- */}
+      {/* --- Call Bar --- */}
       {inCall && (
         <div
           style={{
@@ -429,15 +413,18 @@ export default function ChatDetail() {
               </div>
             </div>
           ))}
-          {typingUserId === selectedChat?.user?.id && typingActiveAt && (
+          {typingVisible && (
             <div
               style={{
                 color: "#8ea0c6",
-                fontSize: 20,
-                margin: 7,
+                fontSize: 17,
+                margin: "7px 0 0 7px",
                 fontStyle: "italic",
                 alignSelf: "flex-start",
                 minHeight: 28,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
               }}
             >
               <DotLoader />
@@ -456,7 +443,7 @@ export default function ChatDetail() {
             gap: 8,
           }}
         >
-          {/* SOL: Ataç ikonu */}
+          {/* Ataç ikonu */}
           <button
             style={{
               background: "none",
@@ -502,7 +489,6 @@ export default function ChatDetail() {
             onKeyUp={(e) => {
               if (e.key === "Enter") sendMessage();
             }}
-            disabled={sending}
           />
           <button
             style={{
@@ -520,9 +506,9 @@ export default function ChatDetail() {
               transition: "background .19s, box-shadow .19s",
             }}
             onClick={sendMessage}
-            disabled={!newMessage.trim() || sending}
+            disabled={!newMessage.trim()}
           >
-            {sending ? "Gönderiliyor..." : "Gönder"}
+            Gönder
           </button>
         </div>
       </div>

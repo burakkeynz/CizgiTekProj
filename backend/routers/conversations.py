@@ -183,9 +183,9 @@ async def send_message(
     conversation = db.query(UserConversation).filter_by(id=conversation_id).first()
     receiver_id = conversation.user2_id if conversation.user1_id == current_user["id"] else conversation.user1_id
 
-    receiver_sid = globals_mod.connected_users.get(receiver_id)
+    receiver_sid = globals_mod.connected_users.get(str(receiver_id))
     print("[SEND_MESSAGE] Receiver SID:", receiver_sid)
-    sender_sid = globals_mod.connected_users.get(current_user["id"])
+    sender_sid = globals_mod.connected_users.get(str(current_user["id"]))
     print("[SEND_MESSAGE] Sender SID:", sender_sid)
 
     for sid in set([receiver_sid, sender_sid]):

@@ -87,7 +87,9 @@ export default function Chat({ currentUser, socket }) {
 
   const handleUserSelect = async (user) => {
     setShowDropdown(false);
-    const existing = conversations.find((c) => c.user?.id === user.id);
+    const existing = conversations.find(
+      (c) => String(c.user?.id) === String(user.id)
+    );
     if (existing) {
       navigate(`/chat/${existing.conversation_id}`);
       return;

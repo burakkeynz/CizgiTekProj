@@ -1,9 +1,11 @@
 import { createSlice } from "@reduxjs/toolkit";
 
 const initialState = {
-  conversations: [], // Sohbet listesi
-  messages: {}, // Her sohbetin mesajları { [conversationId]: [mesajlar] }
+  conversations: [],
+  messages: {}, // { [conversationId]: [mesajlar] }
+  typing: {}, // { [conversationId]: userId }
   loading: false,
+  activeChatId: null,
 };
 
 const chatSlice = createSlice({
@@ -19,18 +21,31 @@ const chatSlice = createSlice({
     },
     addMessage: (state, action) => {
       const { conversationId, message } = action.payload;
-      if (!state.messages[conversationId]) {
-        state.messages[conversationId] = [];
-      }
+      if (!state.messages[conversationId]) state.messages[conversationId] = [];
       state.messages[conversationId].push(message);
+    },
+    setTyping: (state, action) => {
+      state.typing[action.payload.conversationId] = action.payload.userId;
+    },
+    clearTyping: (state, action) => {
+      delete state.typing[action.payload.conversationId];
+    },
+    setActiveChat: (state, action) => {
+      state.activeChatId = action.payload;
     },
     setLoading: (state, action) => {
       state.loading = action.payload;
     },
-    // ihtiyaca göre unread vs
   },
 });
 
-export const { setConversations, setMessages, addMessage, setLoading } =
-  chatSlice.actions;
+export const {
+  setConversations,
+  setMessages,
+  addMessage,
+  setTyping,
+  clearTyping,
+  setActiveChat,
+  setLoading,
+} = chatSlice.actions;
 export default chatSlice.reducer;

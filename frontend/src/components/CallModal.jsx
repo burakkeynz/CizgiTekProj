@@ -1,15 +1,25 @@
 import React from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { answerCall, endCall } from "../store/callSlice";
+import { useNavigate } from "react-router-dom";
 
 export default function CallModal({ socket, currentUser }) {
   const { inCall, incoming } = useSelector((state) => state.call);
   const peerUser = incoming?.from_user || {};
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   if (!incoming || inCall) return null;
 
-  // **Global pozisyon**
+  // Kabul Et → Hem answerCall, hem sohbetlere yönlendir
+  const handleAccept = () => {
+    dispatch(answerCall());
+    // Burada chatId'yi belirle! Eğer her görüşme bir chat/ID'de oluyorsa:
+    // incoming.chat_id veya peerUser ile birlikte gelen chat id varsa onu kullan
+    // Yoksa hardcode "/chat/1" veya o anki aktif chat'in id'si
+    navigate(`/chat/${incoming.chat_id || peerUser.id}`); // Güncel chat id'yi KULLAN!
+  };
+
   return (
     <div
       style={{
@@ -28,7 +38,7 @@ export default function CallModal({ socket, currentUser }) {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        border: "none", // <-- border yok
+        border: "none",
         transition: "all .2s cubic-bezier(.65,0,.35,1)",
         animation: "popIn .28s cubic-bezier(.65,0,.35,1)",
       }}
@@ -45,7 +55,7 @@ export default function CallModal({ socket, currentUser }) {
       </div>
       <div style={{ display: "flex", gap: 18, marginTop: 10 }}>
         <button
-          onClick={() => dispatch(answerCall())}
+          onClick={handleAccept}
           style={{
             background: "#47c165",
             color: "#fff",

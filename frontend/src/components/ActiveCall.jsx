@@ -1,14 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { endCall, answerCall } from "../store/callSlice";
+import { setActiveChat } from "../store/chatSlice"; // Chat slice'ında varsa
 import {
   getUserMedia,
   createPeerConnection,
   addLocalTracks,
   bindStreamToVideo,
+  closePeerConnection,
 } from "../utils/webrtc";
+import { useNavigate } from "react-router-dom";
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiX } from "react-icons/fi";
 
+// UI helper
 function iconBtn(bg, color) {
   return {
     background: bg,
@@ -23,7 +27,6 @@ function iconBtn(bg, color) {
     fontSize: 21,
     boxShadow: "0 1.5px 10px #0002",
     cursor: "pointer",
-    transition: ".15s",
     margin: "0 7px",
     outline: "none",
   };
@@ -42,101 +45,68 @@ function cleanupAll(localVideoRef, remoteVideoRef, localStreamRef) {
     if (ref.current) {
       ref.current.pause();
       ref.current.srcObject = null;
-      try {
-        ref.current.load();
-      } catch {}
     }
   });
 }
 
 export default function ActiveCall({ socket, currentUser }) {
   const callState = useSelector((state) => state.call);
-  const { peerUser, callType, isStarter, incoming } = callState;
+  const { peerUser, callType, isStarter, incoming, chat_id } = callState;
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   const localVideoRef = useRef();
   const remoteVideoRef = useRef();
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
-
   const remoteCandidatesBuffer = useRef([]);
+  const cleanupCalledRef = useRef(false);
+
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(callType === "video");
   const [peerConnected, setPeerConnected] = useState(false);
-  const [answered, setAnswered] = useState(false);
-  const [pendingOffer, setPendingOffer] = useState(null);
 
+  // Tek seferlik cleanup fonksiyonu
+  function cleanupMedia() {
+    if (cleanupCalledRef.current) return;
+    cleanupCalledRef.current = true;
+    if (peerConnectionRef.current) {
+      try {
+        peerConnectionRef.current.ontrack = null;
+        peerConnectionRef.current.onicecandidate = null;
+        peerConnectionRef.current.close();
+      } catch {}
+      peerConnectionRef.current = null;
+    }
+    cleanupAll(localVideoRef, remoteVideoRef, localStreamRef);
+  }
+
+  // Karşıdan "call end" gelirse anında cleanup ve slice reset, ardından sohbet ekranı!
   useEffect(() => {
-    if (!isStarter && incoming && incoming.sdp && !answered) {
-      let pc = peerConnectionRef.current;
-      if (!pc) {
-        setPendingOffer(incoming);
-        return;
+    const handleCallEnd = () => {
+      cleanupMedia();
+      dispatch(endCall());
+
+      // Aktif sohbeti seçili bırak
+      if (chat_id) {
+        dispatch(setActiveChat(chat_id));
+        navigate(`/chat/${chat_id}`);
+      } else if (peerUser?.id) {
+        // peerUser'dan chat id'yi bulabiliyorsan kullan!
+        navigate(`/chat/${peerUser.id}`);
       }
-      (async () => {
-        try {
-          console.log("[CALL][CALLEE] OFFER geldi, remote desc set ediliyor.");
-          await pc.setRemoteDescription({ type: "offer", sdp: incoming.sdp });
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit("webrtc_answer", {
-            from_user_id: currentUser.id,
-            to_user_id: peerUser?.id,
-            sdp: answer.sdp,
-          });
-          setAnswered(true);
-          dispatch(answerCall());
-          console.log("[CALL][CALLEE] Answer gönderildi.");
-        } catch (e) {
-          console.error("[CALLEE][ERR]", e);
-        }
-      })();
-    }
-  }, [isStarter, incoming, answered, currentUser, peerUser, socket, dispatch]);
+    };
+    socket.on("webrtc_call_end", handleCallEnd);
+    return () => socket.off("webrtc_call_end", handleCallEnd);
+  }, [socket, dispatch, chat_id, peerUser, navigate]);
 
   useEffect(() => {
-    if (pendingOffer && peerConnectionRef.current && !answered) {
-      (async () => {
-        try {
-          console.log("[CALL][CALLEE] Pending offer işleniyor.");
-          await peerConnectionRef.current.setRemoteDescription({
-            type: "offer",
-            sdp: pendingOffer.sdp,
-          });
-          const answer = await peerConnectionRef.current.createAnswer();
-          await peerConnectionRef.current.setLocalDescription(answer);
-          socket.emit("webrtc_answer", {
-            from_user_id: currentUser.id,
-            to_user_id: peerUser?.id,
-            sdp: answer.sdp,
-          });
-          setAnswered(true);
-          dispatch(answerCall());
-          setPendingOffer(null);
-          console.log("[CALL][CALLEE] Answer gönderildi (pendingOffer).");
-        } catch (e) {
-          console.error("[CALLEE][ERR][buffer]", e);
-        }
-      })();
-    }
-  }, [
-    pendingOffer,
-    peerConnectionRef.current,
-    answered,
-    currentUser,
-    peerUser,
-    socket,
-    dispatch,
-  ]);
-
-  useEffect(() => {
-    let cleanupSocket = () => {};
     let ignore = false;
+    let cleanupSocket = () => {};
 
     (async () => {
       try {
-        // 1. Local stream
         const localStream = await getUserMedia({
           video: callType === "video",
           audio: true,
@@ -145,7 +115,6 @@ export default function ActiveCall({ socket, currentUser }) {
         localStreamRef.current = localStream;
         bindStreamToVideo(localVideoRef.current, localStream);
 
-        // 2. PeerConnection (getLocalStream parametresiyle)
         const pc = createPeerConnection({
           onIceCandidate: (candidate) => {
             socket.emit("webrtc_ice_candidate", {
@@ -155,7 +124,6 @@ export default function ActiveCall({ socket, currentUser }) {
             });
           },
           onTrack: (remoteStream) => {
-            // Eğer local stream ile aynıysa bind etmiyo
             remoteStreamRef.current = remoteStream;
             setPeerConnected(true);
             setTimeout(() => {
@@ -168,10 +136,26 @@ export default function ActiveCall({ socket, currentUser }) {
         });
         peerConnectionRef.current = pc;
 
-        addLocalTracks(pc, localStream);
+        const handleOffer = async (data) => {
+          if (!pc) return;
+          try {
+            await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+            addLocalTracks(pc, localStreamRef.current);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit("webrtc_answer", {
+              from_user_id: currentUser.id,
+              to_user_id: peerUser?.id,
+              sdp: answer.sdp,
+            });
+            dispatch(answerCall());
+          } catch (e) {
+            console.error("[CALLEE][handleOffer][ERROR]", e);
+          }
+        };
 
-        // CALLER: createOffer
         if (isStarter) {
+          addLocalTracks(pc, localStream);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           socket.emit("webrtc_offer", {
@@ -182,10 +166,12 @@ export default function ActiveCall({ socket, currentUser }) {
             sdp: offer.sdp,
             call_type: callType,
           });
-          console.log("[CALL][CALLER] Offer gönderildi.");
+        } else if (incoming && incoming.sdp) {
+          await handleOffer(incoming);
         }
 
-        // S. events
+        socket.on("webrtc_offer", handleOffer);
+
         socket.on("webrtc_answer", async (data) => {
           if (data.from_user_id !== peerUser?.id) return;
           await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
@@ -195,9 +181,6 @@ export default function ActiveCall({ socket, currentUser }) {
             } catch {}
           }
           remoteCandidatesBuffer.current = [];
-          console.log(
-            "[CALL][CALLER] Answer alındı ve remote desc set edildi."
-          );
         });
 
         socket.on("webrtc_ice_candidate", async (data) => {
@@ -205,21 +188,27 @@ export default function ActiveCall({ socket, currentUser }) {
           if (pc.remoteDescription && pc.remoteDescription.type) {
             try {
               await pc.addIceCandidate(data.candidate);
-              console.log("[ICE] Candidate eklendi.");
             } catch {}
           } else {
             remoteCandidatesBuffer.current.push(data.candidate);
-            console.log("[ICE] Candidate buffer'a alındı.");
           }
         });
 
         cleanupSocket = () => {
+          socket.off("webrtc_offer", handleOffer);
           socket.off("webrtc_answer");
           socket.off("webrtc_ice_candidate");
         };
       } catch (err) {
         cleanupMedia();
         dispatch(endCall());
+        // Yine aktif chate kal
+        if (chat_id) {
+          dispatch(setActiveChat(chat_id));
+          navigate(`/chat/${chat_id}`);
+        } else if (peerUser?.id) {
+          navigate(`/chat/${peerUser.id}`);
+        }
       }
     })();
 
@@ -228,16 +217,25 @@ export default function ActiveCall({ socket, currentUser }) {
       cleanupSocket();
       cleanupMedia();
     };
-  }, [socket, currentUser, peerUser, callType, isStarter, incoming, answered]);
+  }, [
+    socket,
+    currentUser,
+    peerUser,
+    callType,
+    isStarter,
+    incoming,
+    dispatch,
+    chat_id,
+    navigate,
+  ]);
 
-  // Peer connected olduğunda remote stream tekrar bind
   useEffect(() => {
     if (peerConnected && remoteStreamRef.current && remoteVideoRef.current) {
       bindStreamToVideo(remoteVideoRef.current, remoteStreamRef.current);
     }
   }, [peerConnected]);
 
-  // Butonlar ve cleanup
+  // Butonlar
   const handleToggleMic = () => {
     setMicOn((prev) => {
       if (localStreamRef.current) {
@@ -258,20 +256,22 @@ export default function ActiveCall({ socket, currentUser }) {
       return !prev;
     });
   };
-  const cleanupMedia = () => {
-    if (peerConnectionRef.current) {
-      try {
-        peerConnectionRef.current.ontrack = null;
-        peerConnectionRef.current.onicecandidate = null;
-        peerConnectionRef.current.close();
-      } catch {}
-      peerConnectionRef.current = null;
-    }
-    cleanupAll(localVideoRef, remoteVideoRef, localStreamRef);
-  };
+
+  // X tuşu: iki tarafa da call end signal ve cleanup
   const handleEndCall = () => {
     cleanupMedia();
+    socket.emit("webrtc_call_end", {
+      from_user_id: currentUser.id,
+      to_user_id: peerUser?.id,
+    });
     dispatch(endCall());
+    // Sohbet ekranına yönlendir
+    if (chat_id) {
+      dispatch(setActiveChat(chat_id));
+      navigate(`/chat/${chat_id}`);
+    } else if (peerUser?.id) {
+      navigate(`/chat/${peerUser.id}`);
+    }
   };
 
   return (
