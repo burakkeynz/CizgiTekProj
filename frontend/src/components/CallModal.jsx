@@ -1,23 +1,69 @@
 import React from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { answerCall, endCall } from "../store/callSlice";
+import { setConversations } from "../store/chatSlice"; // EKLE
 import { useNavigate } from "react-router-dom";
+import api from "../api";
+
+// Dışarıda bırakabilirsin
+function findConversationIdByUsers(conversations, id1, id2) {
+  if (!Array.isArray(conversations)) return null;
+  return conversations.find(
+    (c) =>
+      (String(c.user.id) === String(id1) &&
+        String(c.owner_id) === String(id2)) ||
+      (String(c.user.id) === String(id2) && String(c.owner_id) === String(id1))
+  )?.conversation_id;
+}
 
 export default function CallModal({ socket, currentUser }) {
   const { inCall, incoming } = useSelector((state) => state.call);
+  const conversations = useSelector((state) => state.chat.conversations || []);
   const peerUser = incoming?.from_user || {};
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
   if (!incoming || inCall) return null;
 
+  // 1. Önce incoming'den chat_id varsa onu kullan
+  let chatId = incoming.chat_id;
+
+  // 2. Yoksa: conversations array’inde bu iki user’ın ortak sohbetini bul
+  if (!chatId && conversations.length && peerUser?.id && currentUser?.id) {
+    chatId = findConversationIdByUsers(
+      conversations,
+      currentUser.id,
+      peerUser.id
+    );
+  }
+
+  // 3. Hiçbiri yoksa fallback (peerUser.id), asla undefined olmasın
+  if (!chatId) chatId = peerUser.id;
+
   // Kabul Et → Hem answerCall, hem sohbetlere yönlendir
-  const handleAccept = () => {
+  const handleAccept = async () => {
+    let id = chatId;
+    if (!id && peerUser?.id && currentUser?.id) {
+      // Eğer chat yoksa başlat
+      const res = await api.post("/conversations/start_conversation", {
+        receiver_id: peerUser.id,
+      });
+      id = res.data.conversation_id;
+    }
+    // State’te yoksa, listeyi fetch et ve güncelle
+    const found = Array.isArray(conversations)
+      ? conversations.find((c) => String(c.conversation_id) === String(id))
+      : null;
+    if (!found && id) {
+      try {
+        const newList = await api.get("/conversations/my");
+        dispatch(setConversations(newList.data));
+      } catch (e) {
+        // hata yakalamak istersen
+      }
+    }
     dispatch(answerCall());
-    // Burada chatId'yi belirle! Eğer her görüşme bir chat/ID'de oluyorsa:
-    // incoming.chat_id veya peerUser ile birlikte gelen chat id varsa onu kullan
-    // Yoksa hardcode "/chat/1" veya o anki aktif chat'in id'si
-    navigate(`/chat/${incoming.chat_id || peerUser.id}`); // Güncel chat id'yi KULLAN!
+    navigate(`/chat/${id}`);
   };
 
   return (

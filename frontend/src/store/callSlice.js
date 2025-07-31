@@ -8,6 +8,7 @@ const initialState = {
   isStarter: false, // Aramayı başlatan taraf mıyız
   micOn: true, // Görüşme sırasında mikrofon açık mı
   camOn: true, // Görüşme sırasında kamera açık mı
+  chat_id: null,
 };
 
 const callSlice = createSlice({
@@ -21,6 +22,7 @@ const callSlice = createSlice({
       state.peerUser = action.payload.peerUser;
       state.incoming = null;
       state.isStarter = true;
+      state.chat_id = action.payload.chat_id ?? null;
     },
     receiveCall: (state, action) => {
       console.log(
@@ -32,6 +34,7 @@ const callSlice = createSlice({
       state.callType = action.payload.call_type;
       state.peerUser = action.payload.from_user || null;
       state.isStarter = false;
+      state.chat_id = action.payload.chat_id ?? null;
     },
     answerCall: (state) => {
       console.log("[DEBUG][SLICE][answerCall] state:", state);
@@ -49,6 +52,7 @@ const callSlice = createSlice({
       state.isStarter = false;
       state.micOn = true;
       state.camOn = true;
+      state.chat_id = null;
     },
     toggleMic: (state) => {
       state.micOn = !state.micOn;

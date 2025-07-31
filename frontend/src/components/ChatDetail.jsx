@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
 import { useSelector, useDispatch } from "react-redux";
-import { setMessages, addMessage } from "../store/chatSlice";
+import { setMessages, addMessage, setConversations } from "../store/chatSlice";
 import { startCall } from "../store/callSlice";
 import ActiveCall from "./ActiveCall";
 import api from "../api";
@@ -94,7 +94,6 @@ export default function ChatDetail() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  // Redux'taki mesajları çek
   const EMPTY_ARRAY = [];
   const selectMessages = (state, conversationId) =>
     state.chat.messages[conversationId] || EMPTY_ARRAY;
@@ -119,17 +118,42 @@ export default function ChatDetail() {
     (c) => String(c.conversation_id) === String(conversationId)
   );
 
+  // Eğer chat yoksa (örn. arama modalından geldi, state’te yok), yükle!
+  useEffect(() => {
+    if (!selectedChat && conversationId) {
+      api.get("/conversations/my").then((res) => {
+        dispatch(setConversations(res.data));
+      });
+    }
+  }, [selectedChat, conversationId, dispatch]);
+
+  // --- DEBUG LOGS ---
+  useEffect(() => {
+    console.log("=== [DEBUG][ChatDetail] ===");
+    console.log("selectedChat:", selectedChat);
+    console.log("conversationId:", conversationId);
+    console.log("conversations:", conversations);
+    console.log("inCall:", inCall);
+  }, [selectedChat, conversationId, conversations, inCall]);
+
   // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at ---
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId || !selectedChat) {
+      console.warn(
+        "Navigating /chat: currentUser/conversationId/selectedChat eksik!"
+      );
       navigate("/chat", { replace: true });
       return;
     }
     if (!socket || socket.disconnected) {
+      console.warn("Navigating /chat: Socket yok!");
       navigate("/chat", { replace: true });
       return;
     }
-    const onDisconnect = () => navigate("/chat", { replace: true });
+    const onDisconnect = () => {
+      console.warn("Navigating /chat: Socket disconnect event!");
+      navigate("/chat", { replace: true });
+    };
     socket.on("disconnect", onDisconnect);
     return () => socket.off("disconnect", onDisconnect);
   }, [currentUser, conversationId, socket, selectedChat, navigate]);
@@ -249,7 +273,15 @@ export default function ChatDetail() {
     } catch (err) {}
   };
 
-  if (!selectedChat) return null;
+  // Eğer chat state’te yoksa loading göster!
+  if (!selectedChat) {
+    return (
+      <div style={{ padding: 40, color: "#aaa", textAlign: "center" }}>
+        <DotLoader /> Sohbet yükleniyor...
+      </div>
+    );
+  }
+
   const iconBtnStyle = {
     background: "none",
     border: "none",
@@ -275,32 +307,36 @@ export default function ChatDetail() {
         background: isDark ? "#181a1b" : "#fff",
         minHeight: 0,
         position: "relative",
+        overflow: "hidden",
       }}
     >
-      {/* --- Call Bar --- */}
+      {/* --- CALL BAR (Arama kartı üstte, overlay şekilde) --- */}
       {inCall && (
         <div
           style={{
-            width: "100%",
             position: "absolute",
-            left: 0,
-            top: 0,
-            right: 0,
-            zIndex: 20,
+            top: 32,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 30,
+            width: 520,
+            maxWidth: "95vw",
+            pointerEvents: "all",
           }}
         >
           <ActiveCall socket={socket} currentUser={currentUser} />
         </div>
       )}
 
+      {/* --- CHAT ALANI --- */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          marginTop: inCall ? 320 : 0,
-          transition: "margin-top .19s",
+          paddingTop: inCall ? 270 : 0, // Arama kartı yüksekliği kadar boşluk bırak!
+          transition: "padding-top .22s",
         }}
       >
         {/* header */}
@@ -365,6 +401,7 @@ export default function ChatDetail() {
           </div>
         </div>
 
+        {/* mesajlar */}
         <div
           style={{
             flex: 1,
