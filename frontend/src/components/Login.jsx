@@ -1,19 +1,16 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
 import api from "../api";
 
-// Tema switch bileşeni
 function ThemeSwitch() {
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
-
   const handleToggle = () => {
     const newTheme = isDark ? "light" : "dark";
     setTheme(newTheme);
-    // Login öncesi kullanıcı seçimi pending_theme olarak kaydediliyor
     localStorage.setItem("pending_theme", newTheme);
   };
-
   return (
     <label
       title={isDark ? "Açık moda geç" : "Koyu moda geç"}
@@ -66,7 +63,6 @@ function Login() {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
 
-  // Sayfa ilk mount olduğunda pending_theme uyguluyorum (varsa)
   React.useEffect(() => {
     const pending = localStorage.getItem("pending_theme");
     if (pending) setTheme(pending);
@@ -80,7 +76,6 @@ function Login() {
 
     try {
       await api.post("/auth/token", data);
-      // Login başarılı olursa pending_themei uyguluyorum ve temizleme
       const pendingTheme = localStorage.getItem("pending_theme");
       if (pendingTheme) {
         setTheme(pendingTheme);
@@ -256,9 +251,9 @@ function Login() {
           }}
         >
           Don't you have an account?{" "}
-          <a href="/register" style={{ color: "#dc3545", fontWeight: "bold" }}>
+          <Link to="/register" style={{ color: "#dc3545", fontWeight: "bold" }}>
             Register
-          </a>
+          </Link>
         </p>
       </div>
     </div>

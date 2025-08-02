@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import api from "../api";
 
 const roleOptions = [
@@ -52,7 +52,7 @@ function Register() {
       await api.post("/auth/register", {
         ...form,
       });
-      navigate("/dashboard");
+      navigate("/login");
     } catch (err) {
       if (err.response?.data?.detail) {
         alert(err.response.data.detail);
@@ -176,9 +176,9 @@ function Register() {
         </button>
         <p style={{ marginTop: "20px", fontSize: "0.9rem", color: "#666" }}>
           Already have an account?{" "}
-          <a href="/login" style={{ color: "#28a745", fontWeight: "bold" }}>
+          <Link to="/login" style={{ color: "#28a745", fontWeight: "bold" }}>
             Login
-          </a>
+          </Link>
         </p>
       </div>
     </div>
