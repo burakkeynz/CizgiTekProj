@@ -37,7 +37,7 @@ export default function AppearanceSettings() {
         <Switch checked={theme === "dark"} onChange={handleChange} />
       </div>
       <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
-        Tema tercihiniz uygulama açıkken geçerli olur.
+        Your theme preference will be active when the app is on.
       </div>
     </div>
   );

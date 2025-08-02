@@ -8,7 +8,7 @@ export default function ProfileSettings() {
     api.get("/auth/me").then((res) => setUser(res.data));
   }, []);
 
-  if (!user) return <div>Yükleniyor...</div>;
+  if (!user) return <div>Loading...</div>;
 
   return (
     <div>
@@ -21,14 +21,14 @@ export default function ProfileSettings() {
           letterSpacing: ".4px",
         }}
       >
-        Profil
+        Profile
       </h2>
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Kullanıcı Adı</label>
+        <label style={labelStyle}>Username</label>
         <input value={user.username} disabled style={inputStyle} />
       </div>
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>İsim</label>
+        <label style={labelStyle}>Name</label>
         <input
           value={user.first_name + " " + user.last_name}
           disabled
@@ -36,7 +36,7 @@ export default function ProfileSettings() {
         />
       </div>
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Rol</label>
+        <label style={labelStyle}>Role</label>
         <input value={user.role} disabled style={inputStyle} />
       </div>
 

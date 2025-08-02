@@ -49,9 +49,9 @@ function SessionExpired() {
           😕
         </span>
         <div style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
-          Oturumunuz sona erdi
+          Your session is over
         </div>
-        <div style={{ marginBottom: 20 }}>Lütfen tekrar giriş yapın.</div>
+        <div style={{ marginBottom: 20 }}>Please log in again.</div>
         <a
           href="/login"
           onClick={() => localStorage.removeItem("last_theme")}

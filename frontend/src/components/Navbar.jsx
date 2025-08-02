@@ -29,7 +29,7 @@ const NAV_ITEMS = [
     icon: <FiVideo size={26} />,
   },
   {
-    label: "Sohbetler",
+    label: "Chats",
     to: "/chat",
     icon: <FiMessageCircle size={26} />,
   },
@@ -39,7 +39,7 @@ const NAV_ITEMS = [
     icon: <FiFileText size={26} />,
   },
   {
-    label: "Ayarlar",
+    label: "Settings",
     to: "/settings",
     icon: <FiSettings size={26} />,
   },

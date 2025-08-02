@@ -6,9 +6,7 @@ import { useTheme } from "./ThemeContext";
 import FilePreviewModal from "./FilePreviewModal";
 
 const SESSION_KEY = "ai_assistang_logs:";
-const INITIAL_MSG = [
-  { role: "model", text: "Merhaba! Size nasıl yardımcı olabilirim?" },
-];
+const INITIAL_MSG = [{ role: "model", text: "Hi! How can I help you?" }];
 
 function DotLoader() {
   return (
@@ -634,7 +632,7 @@ function Assistant({ onNewLog }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleInputKeyDown}
           disabled={loading}
-          placeholder="Asistan'a sorun..."
+          placeholder="Ask Assistant..."
           rows={2}
           style={{
             width: "100%",
@@ -670,7 +668,7 @@ function Assistant({ onNewLog }) {
               transition: "background 0.18s",
             }}
           >
-            Gönder
+            Send
           </button>
           <button
             onClick={handleEndDiscussion}

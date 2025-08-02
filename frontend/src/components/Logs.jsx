@@ -143,7 +143,7 @@ function Logs({ logs, onDelete }) {
             marginBottom: 18,
           }}
         >
-          Chat Geçmişi
+          Chat Logs
         </h2>
         {logs.length === 0 && (
           <div

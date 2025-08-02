@@ -410,7 +410,7 @@ export default function ActiveCall({
                 textAlign: "center",
               }}
             >
-              Bağlantı bekleniyor…
+              Waiting network connection…
             </span>
           )}
         </div>

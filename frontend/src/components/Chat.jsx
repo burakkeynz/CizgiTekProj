@@ -6,13 +6,13 @@ import { useSelector } from "react-redux";
 import api from "../api";
 
 function getUserName(user) {
-  if (!user) return "Bilinmeyen Kullanıcı";
+  if (!user) return "Unknown user";
   if (user.name) return user.name;
   if (user.first_name && user.last_name)
     return user.first_name + " " + user.last_name;
   if (user.first_name) return user.first_name;
   if (user.username) return user.username;
-  return "Bilinmeyen Kullanıcı";
+  return "Unknown user";
 }
 function UserAvatar({ user }) {
   const name = getUserName(user);
@@ -139,7 +139,7 @@ export default function Chat({ currentUser, socket }) {
           }}
         >
           <span style={{ fontWeight: 700, fontSize: 21, color: "#e8ecf4" }}>
-            Sohbetler
+            Chats
           </span>
           <button
             style={{
@@ -161,7 +161,7 @@ export default function Chat({ currentUser, socket }) {
               transition: "background .17s, box-shadow .17s",
             }}
             onClick={() => setShowDropdown((v) => !v)}
-            title="Yeni Sohbet Başlat"
+            title="Create New Chat"
           >
             +
           </button>
@@ -175,7 +175,7 @@ export default function Chat({ currentUser, socket }) {
               textAlign: "center",
             }}
           >
-            Henüz sohbet yok
+            No chat yet
           </div>
         )}
         {conversations.map((c) => (
@@ -219,7 +219,7 @@ export default function Chat({ currentUser, socket }) {
               >
                 {c.last_message
                   ? `${
-                      c.last_message.from_me ? "Sen: " : ""
+                      c.last_message.from_me ? "You: " : ""
                     }${lastMessagePreview(c.last_message.content)}`
                   : "Henüz mesaj yok"}
               </div>
@@ -255,7 +255,7 @@ export default function Chat({ currentUser, socket }) {
                 fontWeight: 600,
               }}
             >
-              <span style={{ fontWeight: 600 }}>Kişi Seçin</span>
+              <span style={{ fontWeight: 600 }}>Select Person</span>
               <span
                 onClick={() => setShowDropdown(false)}
                 style={{ cursor: "pointer", fontSize: 18, padding: 3 }}
@@ -320,7 +320,7 @@ export default function Chat({ currentUser, socket }) {
               fontWeight: 500,
             }}
           >
-            Bir sohbet seçin veya yeni sohbet başlatın.
+            Select a chat or create new one.
           </div>
         )}
       </div>

@@ -25,7 +25,7 @@ function Dashboard() {
           marginBottom: 16,
         }}
       >
-        Hoş Geldiniz!
+        Welcome!
       </h1>
       <img
         src={logo}
@@ -49,12 +49,12 @@ function Dashboard() {
           maxWidth: 400,
         }}
       >
-        Hastane Panel Sistemi
+        Hospital Panel System
         <br />
         <span
           style={{ fontWeight: 400, fontSize: 17, color: "var(--text-muted)" }}
         >
-          Kolayca görüşün, danışın ve erişin
+          Easily meet, consult and access
         </span>
       </div>
     </div>

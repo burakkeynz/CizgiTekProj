@@ -191,7 +191,7 @@ function ChatLogDetail({ logs, currentUser }) {
             alignSelf: "flex-start",
           }}
         >
-          Chat Detayı
+          Chat Details
         </h2>
         <div
           style={{

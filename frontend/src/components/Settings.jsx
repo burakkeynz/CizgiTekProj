@@ -4,9 +4,9 @@ import PasswordSettings from "./PasswordSettings";
 import AppearanceSettings from "./AppearanceSettings";
 
 const SETTINGS_TABS = [
-  { key: "profile", label: "Profil" },
-  { key: "password", label: "Şifre Değiştir" },
-  { key: "appearance", label: "Görünüm" },
+  { key: "profile", label: "Profile" },
+  { key: "password", label: "Change Password" },
+  { key: "appearance", label: "Appearance" },
 ];
 
 export default function Settings() {

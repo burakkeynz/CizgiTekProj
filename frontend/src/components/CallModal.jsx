@@ -62,13 +62,13 @@ export default function CallModal({ socket, currentUser }) {
         }
         dispatch(setConversations(listRes.data));
       } catch (e) {
-        alert("Sohbet başlatılırken hata oluştu.");
+        alert("Something went wrong.");
         return;
       }
     }
 
     if (!id) {
-      alert("Sohbet ID bulunamadı.");
+      alert("Couldn't find chat id.");
       return;
     }
     dispatch(answerCall());
@@ -102,11 +102,11 @@ export default function CallModal({ socket, currentUser }) {
         <b>
           {peerUser?.first_name || peerUser?.username || incoming.from_user_id}
         </b>{" "}
-        sizi
+        sends you
         <span style={{ color: "#5c93f7", marginLeft: 7 }}>
-          {incoming.call_type === "video" ? "görüntülü" : "sesli"}
+          {incoming.call_type === "video" ? "video" : "audio"}
         </span>{" "}
-        arıyor!
+        call!
       </div>
       <div style={{ display: "flex", gap: 18, marginTop: 10 }}>
         <button
@@ -123,7 +123,7 @@ export default function CallModal({ socket, currentUser }) {
             boxShadow: "0 1px 8px #1a432055",
           }}
         >
-          Kabul Et
+          Accept
         </button>
         <button
           onClick={() => dispatch(endCall())}
@@ -139,7 +139,7 @@ export default function CallModal({ socket, currentUser }) {
             boxShadow: "0 1px 8px #431a1a55",
           }}
         >
-          Reddet
+          Reject
         </button>
       </div>
       <style>

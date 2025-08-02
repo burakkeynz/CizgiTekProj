@@ -126,7 +126,7 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
               onClick={() => setMinimized(false)}
               title="Görüşmeyi Aç"
             >
-              Arama aktif • Aç
+              Call is active • Open
             </button>
           )}
         </div>

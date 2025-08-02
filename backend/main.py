@@ -5,7 +5,6 @@ from backend.models import Base, Users
 from backend.database import engine, get_db
 from dotenv import load_dotenv
 import os
-
 import socketio
 import backend.globals as globals_mod
 

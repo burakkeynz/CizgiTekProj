@@ -334,7 +334,7 @@ export default function ChatDetail() {
               <div>
                 <div style={{ fontWeight: "600", fontSize: 16 }}>
                   {selectedChat.user.first_name ||
-                    selectedChat.user.username ||
+                    selectedChat.user.name ||
                     "Kullanıcı"}
                 </div>
                 <div
@@ -513,7 +513,7 @@ export default function ChatDetail() {
             }}
             value={newMessage}
             onChange={handleInputChange}
-            placeholder="Mesaj yaz..."
+            placeholder="Type something..."
             onKeyUp={(e) => {
               if (e.key === "Enter") sendMessage();
             }}
@@ -536,7 +536,7 @@ export default function ChatDetail() {
             onClick={sendMessage}
             disabled={!newMessage.trim()}
           >
-            Gönder
+            Send
           </button>
         </div>
       </div>

@@ -30,7 +30,7 @@ export default function Patients() {
           letterSpacing: ".5px",
         }}
       >
-        Hasta Listesi
+        Patients List
       </h2>
 
       <div
@@ -57,11 +57,11 @@ export default function Patients() {
                 transition: "background 0.2s, color 0.2s",
               }}
             >
-              <th style={thStyle}>Ad Soyad</th>
+              <th style={thStyle}>Name-Surname</th>
               <th style={thStyle}>TC</th>
-              <th style={thStyle}>Yaş</th>
-              <th style={thStyle}>Cinsiyet</th>
-              <th style={thStyle}>Hastalık</th>
+              <th style={thStyle}>Age</th>
+              <th style={thStyle}>Gender</th>
+              <th style={thStyle}>Diagnosis</th>
             </tr>
           </thead>
           <tbody>
