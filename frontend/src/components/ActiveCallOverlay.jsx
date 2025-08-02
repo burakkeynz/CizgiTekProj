@@ -4,7 +4,6 @@ import ActiveCall from "./ActiveCall";
 import { Rnd } from "react-rnd";
 
 const MINIMIZED_SIZE = { width: 170, height: 38 };
-const CHAT_HEADER_HEIGHT = 74;
 const OVERLAY_MARGIN_TOP = 0;
 
 export default function ActiveCallOverlay({ socket, currentUser }) {
@@ -29,11 +28,9 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
 
   if (!inCall || !panelRect) return null;
 
-  const width = minimized ? MINIMIZED_SIZE.width : panelRect.width - 24;
+  const width = minimized ? MINIMIZED_SIZE.width : panelRect.width; //-24  vardı kaldırarak test ediyorum bi
   const height = minimized ? MINIMIZED_SIZE.height : 220;
-
-  // EN üstte chat panelinin tam yatay ortasında
-  const x = panelRect.left + 12;
+  const x = panelRect.left; //+12 vardı kaldırarak test ediyorum bi
   const y = panelRect.top + OVERLAY_MARGIN_TOP;
 
   return (
@@ -64,10 +61,11 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
           zIndex: 3000,
           pointerEvents: "auto",
           position: "absolute",
-          boxShadow: "0 8px 32px #0007, 0 2px 10px #3332",
-          borderRadius: minimized ? 16 : 22,
-          overflow: "visible",
+          // DİKKAT: Burada hiç bir shadow, border, bg OLMAYACAK!
+          boxShadow: "none",
           background: "none",
+          borderRadius: 0,
+          overflow: "visible",
         }}
         enableResizing={!minimized}
         dragHandleClassName="draggable-bar"
@@ -76,46 +74,37 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
           style={{
             width: "100%",
             height: "100%",
-            background: minimized
-              ? "linear-gradient(120deg, #23293A 60%, #212a37 100%)"
-              : "linear-gradient(120deg, #23293A 90%, #212a37 100%)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: minimized ? 16 : 22,
-            position: "relative",
-            boxShadow: "0 4px 28px #0007",
-            border: minimized ? "none" : "1.5px solid #232a38",
-            borderBottom: minimized ? "none" : "2.5px solid #4c5670", // Altına ince bir çizgi ekle
+            background: "none",
           }}
         >
-          {/* --- Minimize / maximize butonu --- */}
-          {!minimized && (
-            <button
-              style={{
-                position: "absolute",
-                top: 10,
-                right: 14,
-                background: "#202a3a",
-                color: "#eee",
-                border: "none",
-                borderRadius: "50%",
-                width: 28,
-                height: 28,
-                fontSize: 19,
-                fontWeight: 600,
-                cursor: "pointer",
-                opacity: 0.85,
-                zIndex: 20,
-                transition: "background .13s",
-              }}
-              onClick={() => setMinimized(true)}
-              title="Minimize Et"
-            >
-              &#8211;
-            </button>
-          )}
-          {minimized ? (
+          {!minimized ? (
+            <div style={{ width: "100%", height: "100%" }}>
+              <div
+                className="draggable-bar"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  height: 28,
+                  width: "100%",
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                  cursor: "move",
+                  zIndex: 10,
+                  background: "rgba(30,38,56,0.13)",
+                }}
+              />
+              <ActiveCall
+                socket={socket}
+                currentUser={currentUser}
+                onMinimize={() => setMinimized(true)}
+                minimized={false}
+              />
+            </div>
+          ) : (
             <button
               style={{
                 background: "linear-gradient(90deg, #222 70%, #334 100%)",
@@ -139,25 +128,6 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
             >
               Arama aktif • Aç
             </button>
-          ) : (
-            <div style={{ width: "100%", height: "100%" }}>
-              <div
-                className="draggable-bar"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  height: 28,
-                  width: "100%",
-                  borderTopLeftRadius: 20,
-                  borderTopRightRadius: 20,
-                  cursor: "move",
-                  zIndex: 10,
-                  background: "rgba(30,38,56,0.18)",
-                }}
-              />
-              <ActiveCall socket={socket} currentUser={currentUser} />
-            </div>
           )}
         </div>
       </Rnd>

@@ -4,7 +4,6 @@ import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
 import { useSelector, useDispatch } from "react-redux";
 import { setMessages, addMessage, setConversations } from "../store/chatSlice";
 import { startCall } from "../store/callSlice";
-import ActiveCallOverlay from "./ActiveCallOverlay";
 
 import api from "../api";
 
@@ -303,7 +302,7 @@ export default function ChatDetail() {
         overflow: "hidden",
       }}
     >
-      <ActiveCallOverlay socket={socket} currentUser={currentUser} />
+      {/* <ActiveCallOverlay socket={socket} currentUser={currentUser} /> */}
 
       {/* chat alanI */}
       <div

@@ -3,7 +3,6 @@ import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
 import { useSelector } from "react-redux";
 // import ActiveCall from "./ActiveCall";
-import ActiveCallOverlay from "./ActiveCallOverlay";
 import api from "../api";
 
 function getUserName(user) {

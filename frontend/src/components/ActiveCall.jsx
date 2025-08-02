@@ -49,7 +49,12 @@ function cleanupAll(localVideoRef, remoteVideoRef, localStreamRef) {
   });
 }
 
-export default function ActiveCall({ socket, currentUser }) {
+export default function ActiveCall({
+  socket,
+  currentUser,
+  onMinimize,
+  minimized,
+}) {
   const callState = useSelector((state) => state.call);
   const { peerUser, callType, isStarter, incoming, chat_id } = callState;
   const dispatch = useDispatch();
@@ -285,154 +290,171 @@ export default function ActiveCall({ socket, currentUser }) {
   return (
     <div
       style={{
-        width: "100%",
+        background: "linear-gradient(135deg, #23273c 84%, #262d43 100%)",
+        borderRadius: 22,
+        boxShadow: "0 8px 32px #0007",
+        border: "1.5px solid #2d3343",
+        padding: "26px 34px 18px 34px",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        marginTop: 28,
-        zIndex: 20,
+        minWidth: 420,
+        minHeight: 145,
+        maxWidth: 680,
+        gap: 18,
         position: "relative",
+        transition: "box-shadow .2s, border .2s",
       }}
     >
+      {/* Minimize Button */}
+      {typeof onMinimize === "function" && (
+        <button
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 16,
+            background: "#202a3a",
+            color: "#eee",
+            border: "none",
+            borderRadius: "50%",
+            width: 28,
+            height: 28,
+            fontSize: 19,
+            fontWeight: 700,
+            cursor: "pointer",
+            opacity: 0.8,
+            zIndex: 20,
+            transition: "background .13s",
+          }}
+          onClick={onMinimize}
+          title="Minimize Et"
+        >
+          &#8211;
+        </button>
+      )}
+
+      {/* Video Area */}
       <div
         style={{
-          background: "linear-gradient(135deg, #23273c 72%, #262d43 100%)",
-          borderTopLeftRadius: 7,
-          borderTopRightRadius: 7,
-          borderBottomLeftRadius: 23,
-          borderBottomRightRadius: 23,
-          boxShadow: "0 4px 32px #0006",
-          padding: "23px 36px 16px 36px",
+          width: "100%",
           display: "flex",
-          flexDirection: "column",
+          flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
-          gap: 22,
-          minWidth: 470,
-          minHeight: 128,
-          maxWidth: 730,
+          gap: 34,
+          position: "relative",
         }}
       >
         <div
           style={{
-            width: "100%",
+            background: "#161b25",
+            borderRadius: 8,
+            width: 168,
+            height: 126,
             display: "flex",
-            flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            gap: 36,
+            boxShadow: "0 1.5px 6px #0002",
             position: "relative",
           }}
         >
-          <div
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
             style={{
-              background: "#161b25",
-              borderRadius: 8,
-              width: 180,
-              height: 132,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 1.5px 6px #0002",
-              position: "relative",
+              width: "100%",
+              height: "100%",
+              borderRadius: 6,
+              objectFit: "cover",
+              background: "#22263b",
             }}
-          >
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: 6,
-                objectFit: "cover",
-                background: "#22263b",
-              }}
-            />
-          </div>
-          <div
-            style={{
-              background: "#161b25",
-              borderRadius: 8,
-              width: 180,
-              height: 132,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 1.5px 6px #0002",
-              position: "relative",
-            }}
-          >
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: 6,
-                objectFit: "cover",
-                background: "#22263b",
-                opacity: peerConnected ? 1 : 0,
-                transition: "opacity 0.2s",
-              }}
-            />
-            {!peerConnected && (
-              <span
-                style={{
-                  color: "#8ea0c6",
-                  fontSize: 15,
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  textAlign: "center",
-                }}
-              >
-                Bağlantı bekleniyor…
-              </span>
-            )}
-          </div>
+          />
         </div>
         <div
           style={{
-            marginTop: 20,
-            width: "100%",
+            background: "#161b25",
+            borderRadius: 8,
+            width: 168,
+            height: 126,
             display: "flex",
+            alignItems: "center",
             justifyContent: "center",
-            gap: 13,
+            boxShadow: "0 1.5px 6px #0002",
+            position: "relative",
           }}
         >
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            style={{
+              width: "100%",
+              height: "100%",
+              borderRadius: 6,
+              objectFit: "cover",
+              background: "#22263b",
+              opacity: peerConnected ? 1 : 0,
+              transition: "opacity 0.2s",
+            }}
+          />
+          {!peerConnected && (
+            <span
+              style={{
+                color: "#8ea0c6",
+                fontSize: 15,
+                position: "absolute",
+                left: 0,
+                right: 0,
+                textAlign: "center",
+              }}
+            >
+              Bağlantı bekleniyor…
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div
+        style={{
+          marginTop: 18,
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
+          gap: 13,
+        }}
+      >
+        <button
+          onClick={handleToggleMic}
+          title={micOn ? "Mikrofonu Kapat" : "Mikrofonu Aç"}
+          style={iconBtn(
+            micOn ? "#212539" : "#fff",
+            micOn ? "#fff" : "#ff3c5c"
+          )}
+        >
+          {micOn ? <FiMic /> : <FiMicOff />}
+        </button>
+        {callType === "video" && (
           <button
-            onClick={handleToggleMic}
-            title={micOn ? "Mikrofonu Kapat" : "Mikrofonu Aç"}
+            onClick={handleToggleCam}
+            title={camOn ? "Kamerayı Kapat" : "Kamerayı Aç"}
             style={iconBtn(
-              micOn ? "#212539" : "#fff",
-              micOn ? "#fff" : "#ff3c5c"
+              camOn ? "#212539" : "#fff",
+              camOn ? "#fff" : "#ff3c5c"
             )}
           >
-            {micOn ? <FiMic /> : <FiMicOff />}
+            {camOn ? <FiVideo /> : <FiVideoOff />}
           </button>
-          {callType === "video" && (
-            <button
-              onClick={handleToggleCam}
-              title={camOn ? "Kamerayı Kapat" : "Kamerayı Aç"}
-              style={iconBtn(
-                camOn ? "#212539" : "#fff",
-                camOn ? "#fff" : "#ff3c5c"
-              )}
-            >
-              {camOn ? <FiVideo /> : <FiVideoOff />}
-            </button>
-          )}
-          <button
-            onClick={handleEndCall}
-            title="Görüşmeyi Bitir"
-            style={iconBtn("#fff", "#ff3c5c")}
-          >
-            <FiX />
-          </button>
-        </div>
+        )}
+        <button
+          onClick={handleEndCall}
+          title="Görüşmeyi Bitir"
+          style={iconBtn("#fff", "#ff3c5c")}
+        >
+          <FiX />
+        </button>
       </div>
     </div>
   );
