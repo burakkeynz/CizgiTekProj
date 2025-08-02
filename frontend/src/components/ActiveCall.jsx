@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { endCall, answerCall } from "../store/callSlice";
-import { setActiveChat } from "../store/chatSlice"; // Chat slice'ında varsa
+import { setActiveChat } from "../store/chatSlice";
 import {
   getUserMedia,
   createPeerConnection,
@@ -87,19 +87,15 @@ export default function ActiveCall({ socket, currentUser }) {
     const handleCallEnd = () => {
       cleanupMedia();
       dispatch(endCall());
-
-      // Aktif sohbeti seçili bırak
+      // Aktif sohbeti seçili bırak (mutlaka chat_id ile!)
       if (chat_id) {
         dispatch(setActiveChat(chat_id));
         navigate(`/chat/${chat_id}`);
-      } else if (peerUser?.id) {
-        // peerUser'dan chat id'yi bulabiliyorsan kullan!
-        navigate(`/chat/${peerUser.id}`);
       }
     };
     socket.on("webrtc_call_end", handleCallEnd);
     return () => socket.off("webrtc_call_end", handleCallEnd);
-  }, [socket, dispatch, chat_id, peerUser, navigate]);
+  }, [socket, dispatch, chat_id, navigate]);
 
   useEffect(() => {
     let ignore = false;
@@ -121,6 +117,7 @@ export default function ActiveCall({ socket, currentUser }) {
               from_user_id: currentUser.id,
               to_user_id: peerUser?.id,
               candidate,
+              chat_id,
             });
           },
           onTrack: (remoteStream) => {
@@ -147,6 +144,7 @@ export default function ActiveCall({ socket, currentUser }) {
               from_user_id: currentUser.id,
               to_user_id: peerUser?.id,
               sdp: answer.sdp,
+              chat_id,
             });
             dispatch(answerCall());
           } catch (e) {
@@ -165,6 +163,7 @@ export default function ActiveCall({ socket, currentUser }) {
             to_user: peerUser,
             sdp: offer.sdp,
             call_type: callType,
+            chat_id,
           });
         } else if (incoming && incoming.sdp) {
           await handleOffer(incoming);
@@ -174,13 +173,25 @@ export default function ActiveCall({ socket, currentUser }) {
 
         socket.on("webrtc_answer", async (data) => {
           if (data.from_user_id !== peerUser?.id) return;
-          await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
-          for (const c of remoteCandidatesBuffer.current) {
-            try {
-              await pc.addIceCandidate(c);
-            } catch {}
+          // Sadece doğru signaling statede sdp answer işlemek için
+          if (!pc || pc.signalingState !== "have-local-offer") {
+            console.warn(
+              "[CALLER] SDP answer geldi ama signalingState:",
+              pc?.signalingState
+            );
+            return;
           }
-          remoteCandidatesBuffer.current = [];
+          try {
+            await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+            for (const c of remoteCandidatesBuffer.current) {
+              try {
+                await pc.addIceCandidate(c);
+              } catch {}
+            }
+            remoteCandidatesBuffer.current = [];
+          } catch (e) {
+            console.error("[CALLER][setRemoteDescription][ERROR]", e);
+          }
         });
 
         socket.on("webrtc_ice_candidate", async (data) => {
@@ -202,7 +213,7 @@ export default function ActiveCall({ socket, currentUser }) {
       } catch (err) {
         cleanupMedia();
         dispatch(endCall());
-        // Yine aktif chate kal
+        // Yine aktif chate kalmak için
         if (chat_id) {
           dispatch(setActiveChat(chat_id));
           navigate(`/chat/${chat_id}`);
@@ -257,20 +268,17 @@ export default function ActiveCall({ socket, currentUser }) {
     });
   };
 
-  // X tuşu: iki tarafa da call end signal ve cleanup
   const handleEndCall = () => {
     cleanupMedia();
     socket.emit("webrtc_call_end", {
       from_user_id: currentUser.id,
       to_user_id: peerUser?.id,
+      chat_id,
     });
     dispatch(endCall());
-    // Sohbet ekranına yönlendir
     if (chat_id) {
       dispatch(setActiveChat(chat_id));
       navigate(`/chat/${chat_id}`);
-    } else if (peerUser?.id) {
-      navigate(`/chat/${peerUser.id}`);
     }
   };
 

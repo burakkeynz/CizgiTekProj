@@ -22,7 +22,7 @@ import PatientDetail from "./components/PatientDetail";
 import api from "./api";
 import { io } from "socket.io-client";
 import CallModal from "./components/CallModal";
-import ActiveCall from "./components/ActiveCall";
+import ActiveCallOverlay from "./components/ActiveCallOverlay";
 import { useSelector, useDispatch } from "react-redux";
 import { receiveCall } from "./store/callSlice";
 
@@ -202,8 +202,8 @@ function App() {
           <Assistant onNewLog={handleNewLog} />
         </div>
       )}
-      {/* ==== CALL MODAL GLOBAL ==== */}
       {showLayout && <CallModal socket={socket} currentUser={user} />}
+      {showLayout && <ActiveCallOverlay socket={socket} currentUser={user} />}
     </div>
   );
 }

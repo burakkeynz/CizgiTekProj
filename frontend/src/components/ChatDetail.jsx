@@ -4,7 +4,8 @@ import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
 import { useSelector, useDispatch } from "react-redux";
 import { setMessages, addMessage, setConversations } from "../store/chatSlice";
 import { startCall } from "../store/callSlice";
-import ActiveCall from "./ActiveCall";
+import ActiveCallOverlay from "./ActiveCallOverlay";
+
 import api from "../api";
 
 function getStatusText(status) {
@@ -106,14 +107,19 @@ export default function ChatDetail() {
   const fileInputRef = useRef();
   const [newMessage, setNewMessage] = useState("");
 
-  // ---- TYPING STATE & LOGIC ----
-  const [typingVisible, setTypingVisible] = useState(false);
-  const typingTimeout = useRef(null);
-  const lastTypingAt = useRef(0);
-  const TYPING_EMIT_INTERVAL = 1000; // ms
-  const lastEmitTimeRef = useRef(0);
+  // --- HEADER VISIBLE STATE & DELAY ---
+  const [headerVisible, setHeaderVisible] = useState(!inCall);
+  useEffect(() => {
+    if (!inCall) {
+      // Arama bittiğinde header'ı delayli göster
+      const timeout = setTimeout(() => setHeaderVisible(true), 800); // 0.8sn delay
+      return () => clearTimeout(timeout);
+    } else {
+      setHeaderVisible(false); // Arama açıldığında hemen gizle
+    }
+  }, [inCall]);
 
-  // Aktif sohbet bul
+  // --- Aktif sohbet bul
   const selectedChat = conversations?.find(
     (c) => String(c.conversation_id) === String(conversationId)
   );
@@ -127,38 +133,23 @@ export default function ChatDetail() {
     }
   }, [selectedChat, conversationId, dispatch]);
 
-  // --- DEBUG LOGS ---
+  // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at (Sadece conversationId/selectedChat yoksa!)
   useEffect(() => {
-    console.log("=== [DEBUG][ChatDetail] ===");
-    console.log("selectedChat:", selectedChat);
-    console.log("conversationId:", conversationId);
-    console.log("conversations:", conversations);
-    console.log("inCall:", inCall);
-  }, [selectedChat, conversationId, conversations, inCall]);
-
-  // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at ---
-  useEffect(() => {
-    if (!currentUser || !currentUser.id || !conversationId || !selectedChat) {
-      console.warn(
-        "Navigating /chat: currentUser/conversationId/selectedChat eksik!"
-      );
+    if (!currentUser || !currentUser.id || !conversationId) {
       navigate("/chat", { replace: true });
       return;
     }
     if (!socket || socket.disconnected) {
-      console.warn("Navigating /chat: Socket yok!");
       navigate("/chat", { replace: true });
       return;
     }
-    const onDisconnect = () => {
-      console.warn("Navigating /chat: Socket disconnect event!");
-      navigate("/chat", { replace: true });
-    };
+    const onDisconnect = () => navigate("/chat", { replace: true });
     socket.on("disconnect", onDisconnect);
     return () => socket.off("disconnect", onDisconnect);
-  }, [currentUser, conversationId, socket, selectedChat, navigate]);
+  }, [currentUser, conversationId, socket, navigate]);
+  // --- DİKKAT: selectedChat veya inCall değişiminde yönlendirme YOK!
 
-  // --- Mesajları çek ---
+  // --- Mesajları çek
   useEffect(() => {
     if (!selectedChat) return;
     const fetchMessages = async () => {
@@ -173,7 +164,7 @@ export default function ChatDetail() {
     fetchMessages();
   }, [conversationId, selectedChat, currentUser?.id, dispatch]);
 
-  // --- Socket eventleri: mesaj & typing ---
+  // --- Socket eventleri: mesaj & typing
   useEffect(() => {
     if (!socket || !currentUser?.id || !selectedChat) return;
 
@@ -224,7 +215,12 @@ export default function ChatDetail() {
     };
   }, [socket, currentUser?.id, selectedChat, dispatch]);
 
-  // --- Input Change: Throttled Typing Emit ---
+  const [typingVisible, setTypingVisible] = useState(false);
+  const typingTimeout = useRef(null);
+  const lastTypingAt = useRef(0);
+  const TYPING_EMIT_INTERVAL = 1000; // ms
+  const lastEmitTimeRef = useRef(0);
+
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
     if (socket && selectedChat) {
@@ -244,7 +240,7 @@ export default function ChatDetail() {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingVisible]);
 
-  // --- Arama başlatıcılar ---
+  // Arama başlatıcılar
   function handleAudioCall() {
     if (!selectedChat) return;
     dispatch(startCall({ type: "audio", peerUser: selectedChat.user }));
@@ -253,7 +249,6 @@ export default function ChatDetail() {
     if (!selectedChat) return;
     dispatch(startCall({ type: "video", peerUser: selectedChat.user }));
   }
-
   function handleFileClick() {
     fileInputRef.current?.click();
   }
@@ -273,7 +268,6 @@ export default function ChatDetail() {
     } catch (err) {}
   };
 
-  // Eğer chat state’te yoksa loading göster!
   if (!selectedChat) {
     return (
       <div style={{ padding: 40, color: "#aaa", textAlign: "center" }}>
@@ -297,7 +291,6 @@ export default function ChatDetail() {
     transition: "background .15s",
   };
 
-  // --- UI Render ---
   return (
     <div
       style={{
@@ -310,96 +303,95 @@ export default function ChatDetail() {
         overflow: "hidden",
       }}
     >
-      {/* --- CALL BAR (Arama kartı üstte, overlay şekilde) --- */}
-      {inCall && (
-        <div
-          style={{
-            position: "absolute",
-            top: 32,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 30,
-            width: 520,
-            maxWidth: "95vw",
-            pointerEvents: "all",
-          }}
-        >
-          <ActiveCall socket={socket} currentUser={currentUser} />
-        </div>
-      )}
+      <ActiveCallOverlay socket={socket} currentUser={currentUser} />
 
-      {/* --- CHAT ALANI --- */}
+      {/* chat alanI */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          paddingTop: inCall ? 270 : 0, // Arama kartı yüksekliği kadar boşluk bırak!
+          paddingTop: inCall ? 18 : 0, // Sadece çağrı varsa üstte çizgi için boşluk
           transition: "padding-top .22s",
         }}
       >
         {/* header */}
-        <div
-          style={{
-            padding: "0 24px",
-            borderBottom: "1px solid #22293a",
-            background: isDark ? "#202124" : "#fff",
-            color: isDark ? "#fff" : "#23272f",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            height: 74,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-            <UserAvatar user={selectedChat.user} />
-            <div>
-              <div style={{ fontWeight: "600", fontSize: 16 }}>
-                {selectedChat.user.first_name ||
-                  selectedChat.user.username ||
-                  "Kullanıcı"}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: 13,
-                  marginTop: 2,
-                }}
-              >
+        {headerVisible && (
+          <div
+            style={{
+              padding: "0 24px",
+              borderBottom: "1px solid #22293a",
+              background: isDark ? "#202124" : "#fff",
+              color: isDark ? "#fff" : "#23272f",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              height: 74,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+              <UserAvatar user={selectedChat.user} />
+              <div>
+                <div style={{ fontWeight: "600", fontSize: 16 }}>
+                  {selectedChat.user.first_name ||
+                    selectedChat.user.username ||
+                    "Kullanıcı"}
+                </div>
                 <div
                   style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    backgroundColor: getStatusColor(selectedChat.user.status),
-                    marginRight: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: 13,
+                    marginTop: 2,
                   }}
-                />
-                <span style={{ color: "#888" }}>
-                  {getStatusText(selectedChat.user.status)}
-                </span>
+                >
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      backgroundColor: getStatusColor(selectedChat.user.status),
+                      marginRight: 6,
+                    }}
+                  />
+                  <span style={{ color: "#888" }}>
+                    {getStatusText(selectedChat.user.status)}
+                  </span>
+                </div>
               </div>
             </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                style={iconBtnStyle}
+                title="Sesli Arama"
+                onClick={handleAudioCall}
+              >
+                <FiPhone size={22} />
+              </button>
+              <button
+                style={iconBtnStyle}
+                title="Görüntülü Arama"
+                onClick={handleVideoCall}
+              >
+                <FiVideo size={22} />
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              style={iconBtnStyle}
-              title="Sesli Arama"
-              onClick={handleAudioCall}
-            >
-              <FiPhone size={22} />
-            </button>
-            <button
-              style={iconBtnStyle}
-              title="Görüntülü Arama"
-              onClick={handleVideoCall}
-            >
-              <FiVideo size={22} />
-            </button>
-          </div>
-        </div>
+        )}
+
+        {/* ActiveCall ile chat mesajları arasına çizgi */}
+        {inCall && (
+          <div
+            style={{
+              width: "100%",
+              height: 2,
+              background: "linear-gradient(90deg, #4c5670 30%, #222a38 80%)",
+              marginBottom: 6,
+              opacity: 0.82,
+            }}
+          />
+        )}
 
         {/* mesajlar */}
         <div

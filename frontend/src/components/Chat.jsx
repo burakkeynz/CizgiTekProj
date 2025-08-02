@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
 import { useSelector } from "react-redux";
-import ActiveCall from "./ActiveCall";
+// import ActiveCall from "./ActiveCall";
+import ActiveCallOverlay from "./ActiveCallOverlay";
 import api from "../api";
 
 function getUserName(user) {
@@ -294,6 +295,7 @@ export default function Chat({ currentUser, socket }) {
       </div>
       {/* ORTA PANEL */}
       <div
+        id="main-chat-panel"
         style={{
           flex: 1,
           position: "relative",
@@ -304,31 +306,7 @@ export default function Chat({ currentUser, socket }) {
           background: isDark ? "#181a1b" : "#fff",
         }}
       >
-        {/* SADECE ORTA PANELİ KAPLAYAN MODAL */}
-        {call.incoming && !call.inCall && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 20,
-              background: "rgba(20,24,34,0.48)",
-              backdropFilter: "blur(4px)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          ></div>
-        )}
-
-        {call.inCall ? (
-          <ActiveCall socket={socket} currentUser={currentUser}>
-            {conversationId ? (
-              <Outlet context={{ currentUser, socket, conversations }} />
-            ) : (
-              <div />
-            )}
-          </ActiveCall>
-        ) : conversationId ? (
+        {conversationId ? (
           <Outlet context={{ currentUser, socket, conversations }} />
         ) : (
           <div
