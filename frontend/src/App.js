@@ -24,7 +24,6 @@ import CallModal from "./components/CallModal";
 import ActiveCallOverlay from "./components/ActiveCallOverlay";
 import { useDispatch } from "react-redux";
 import { receiveCall } from "./store/callSlice";
-import store from "./store";
 
 function App() {
   const location = useLocation();
@@ -46,21 +45,20 @@ function App() {
     expired,
   } = useAuthCheck(shouldCheckSession);
 
-  // Local user state (hem F5 sonrası hem anlık statü için)
+  // Local user state (for both F5 refresh and live status)
   const [user, setUser] = useState(userFromAuth);
-  // App seviyesinde conversations
   const [conversations, setConversations] = useState([]);
   const [logs, setLogs] = useState([]);
   const [socket, setSocket] = useState(null);
 
   const dispatch = useDispatch();
 
-  // useAuthCheck'ten user güncellenirse local state de güncellenir
+  // Sync user from useAuthCheck
   useEffect(() => {
     setUser(userFromAuth);
   }, [userFromAuth]);
 
-  // Conversationları yükle
+  // Load conversations when session is active
   useEffect(() => {
     if (hasSession) {
       api
@@ -70,7 +68,7 @@ function App() {
     }
   }, [hasSession]);
 
-  // Socket kurulumu
+  // Socket connection & status update logic
   useEffect(() => {
     if (hasSession !== true || !user || !user.id) {
       if (socket) {
@@ -87,19 +85,16 @@ function App() {
       rejectUnauthorized: false,
     });
     setSocket(s);
+    window.socket = s;
 
     s.on("connect", () => {
       s.emit("join", { user_id: user.id });
     });
     s.on("connect_error", (err) => console.error("❌ SOCKET error", err));
-
-    // Tüm kullanıcıların statüsü güncellenirse conversations'ı da güncelle
     s.on("user_status_update", (data) => {
-      // 1. Eğer kendi user'ınsa:
       if (String(data.user_id) === String(user.id)) {
         setUser((prev) => (prev ? { ...prev, status: data.status } : prev));
       }
-      // 2. Diğer user ise conversations içinden update
       setConversations((prev) =>
         prev.map((conv) =>
           conv.user && String(conv.user.id) === String(data.user_id)
@@ -118,10 +113,8 @@ function App() {
     return () => {
       s.disconnect();
     };
-    // eslint-disable-next-line
   }, [user?.id, hasSession]);
 
-  // WebRTC offer için dinleyici
   useEffect(() => {
     if (!socket) return;
     const onOffer = (data) => {
@@ -131,12 +124,10 @@ function App() {
     return () => socket.off("webrtc_offer", onOffer);
   }, [socket, dispatch]);
 
-  // Sayfa değişince redirect flag'ini sıfırla
   useEffect(() => {
     alreadyRedirected.current = false;
   }, [pathname]);
 
-  // ChatLog işlemleri
   const handleNewLog = (log) => setLogs((prev) => [log, ...prev]);
   const handleDelete = async (id) => {
     if (typeof id === "string" && id.startsWith("temp-")) {
@@ -149,7 +140,6 @@ function App() {
     } catch (e) {}
   };
 
-  // ChatLogları yükle
   useEffect(() => {
     if (hasSession) {
       api
@@ -159,7 +149,6 @@ function App() {
     }
   }, [hasSession]);
 
-  // Session kontrol ve yönlendirme
   useEffect(() => {
     if (alreadyRedirected.current) return;
     if (hasSession === false && shouldCheckSession) {

@@ -44,7 +44,6 @@ const callSlice = createSlice({
     },
     endCall: (state) => {
       console.log("[DEBUG][SLICE][endCall] state:", state);
-      // SADECE TEK END CALL!
       state.inCall = false;
       state.incoming = null;
       state.peerUser = null;

@@ -7,20 +7,20 @@ import { startCall } from "../store/callSlice";
 
 import api from "../api";
 
-// Aramadaki kişinin status ve label'ı dinamik gösteren fonksiyon
+// Aramadaki kişinin status ve labelı dinamik gösteren fonksiyon
 function getStatusText(status, inCall) {
   if (inCall) return "Aramada";
   switch (status) {
     case "online":
-      return "Çevrimiçi";
+      return "Online";
     case "offline":
-      return "Çevrimdışı";
+      return "Offline";
     case "busy":
-      return "Meşgul";
+      return "Busy";
     case "in_call":
-      return "Aramada";
+      return "In Call";
     default:
-      return "Bilinmiyor";
+      return "Unknown";
   }
 }
 function getStatusColor(status, inCall) {
@@ -104,12 +104,11 @@ export default function ChatDetail() {
     selectMessages(state, conversationId)
   );
   const callState = useSelector((state) => state.call);
-  const { inCall, peerUser } = callState; // peerUser=karşıdaki kişi objesi
+  const { inCall, peerUser } = callState;
   const messageEndRef = useRef(null);
   const fileInputRef = useRef();
   const [newMessage, setNewMessage] = useState("");
 
-  // --- HEADER VISIBLE STATE & DELAY ---
   const [headerVisible, setHeaderVisible] = useState(!inCall);
   useEffect(() => {
     if (!inCall) {
@@ -120,12 +119,12 @@ export default function ChatDetail() {
     }
   }, [inCall]);
 
-  // --- Aktif sohbet bul
+  // aktif sohbet var mı araması
   const selectedChat = conversations?.find(
     (c) => String(c.conversation_id) === String(conversationId)
   );
 
-  // Eğer chat yoksa (örn. arama modalından geldi, state’te yok), yükle!
+  // Eğer chat yoksa
   useEffect(() => {
     if (!selectedChat && conversationId) {
       api.get("/conversations/my").then((res) => {
@@ -134,7 +133,7 @@ export default function ChatDetail() {
     }
   }, [selectedChat, conversationId, dispatch]);
 
-  // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at
+  // bağlantı veya sohbet olmadıgında guard clause
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId) {
       navigate("/chat", { replace: true });
@@ -149,7 +148,7 @@ export default function ChatDetail() {
     return () => socket.off("disconnect", onDisconnect);
   }, [currentUser, conversationId, socket, navigate]);
 
-  // --- Mesajları çek
+  // mesaj fetch
   useEffect(() => {
     if (!selectedChat) return;
     const fetchMessages = async () => {
@@ -164,7 +163,7 @@ export default function ChatDetail() {
     fetchMessages();
   }, [conversationId, selectedChat, currentUser?.id, dispatch]);
 
-  // --- Socket eventleri: mesaj & typing
+  // socket events typings vs
   useEffect(() => {
     if (!socket || !currentUser?.id || !selectedChat) return;
     const handleReceiveMessage = (data) => {
@@ -275,7 +274,6 @@ export default function ChatDetail() {
     );
   }
 
-  // ===> **Burada logic: Eğer aramada ve peerUser, bu sohbetin kullanıcısıysa "Aramada" göster**
   let showCallStatus = false;
   if (
     inCall &&

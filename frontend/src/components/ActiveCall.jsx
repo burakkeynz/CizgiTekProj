@@ -51,7 +51,7 @@ function cleanupAll(localVideoRef, remoteVideoRef, localStreamRef) {
 export default function ActiveCall({
   socket,
   currentUser,
-  setUser, // <-- YENİ! App.js'ten setUser'ı prop olarak al
+  setUser,
   onMinimize,
   minimized,
 }) {

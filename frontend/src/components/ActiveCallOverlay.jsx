@@ -61,7 +61,6 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
           zIndex: 3000,
           pointerEvents: "auto",
           position: "absolute",
-          // DİKKAT: Burada hiç bir shadow, border, bg OLMAYACAK!
           boxShadow: "none",
           background: "none",
           borderRadius: 0,

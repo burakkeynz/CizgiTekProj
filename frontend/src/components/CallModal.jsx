@@ -69,7 +69,7 @@ export default function CallModal({ socket, currentUser, setUser }) {
       return;
     }
 
-    // **Kabulde statü güncellemesi: hem local, hem socket, hem API**
+    // kabul edilince in call dönüşmesi
     setUser?.((prev) => ({ ...prev, status: "in_call" }));
     socket.emit("user_status", { user_id: currentUser.id, status: "in_call" });
     try {

@@ -79,7 +79,7 @@ export default function Chat({
   const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
-    // Kullanıcıları çek, conversations artık App'ten geliyor!
+    // Kullanıcıları çek
     const fetchUsers = async () => {
       const availRes = await api.get("/users/available");
       setAvailableUsers(availRes.data);
@@ -115,7 +115,7 @@ export default function Chat({
         background: "#10131a",
       }}
     >
-      {/* SOL PANEL */}
+      {/* sol panel*/}
       <div
         style={{
           width: 320,
@@ -294,7 +294,7 @@ export default function Chat({
           </div>
         )}
       </div>
-      {/* ORTA PANEL */}
+      {/* orta panel */}
       <div
         id="main-chat-panel"
         style={{

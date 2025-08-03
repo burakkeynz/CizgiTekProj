@@ -21,9 +21,16 @@ function UserInfoCard({ user, setUser, expiresIn }) {
 
   const handleStatusChange = async (e) => {
     const selected = e.target.value;
+    setUser((prev) => ({ ...prev, status: selected })); // Optimistic UI
+    const socket = window.socket;
+    if (socket && user?.id) {
+      socket.emit("user_status", {
+        user_id: user.id,
+        status: selected,
+      });
+    }
     try {
       await api.put("/users/update-status", { status: selected });
-      setUser((prev) => ({ ...prev, status: selected }));
     } catch (err) {
       console.warn("Status update failed:", err);
     }
@@ -73,8 +80,6 @@ function UserInfoCard({ user, setUser, expiresIn }) {
       >
         {user.first_name?.[0]?.toUpperCase() || "U"}
       </div>
-
-      {/* Name */}
       <div
         style={{
           fontWeight: 600,
@@ -85,7 +90,6 @@ function UserInfoCard({ user, setUser, expiresIn }) {
       >
         {fullName}
       </div>
-
       <select
         value={user.status}
         onChange={handleStatusChange}
@@ -110,7 +114,6 @@ function UserInfoCard({ user, setUser, expiresIn }) {
           ⚪ Offline
         </option>
       </select>
-
       <div
         style={{
           background: "var(--input-bg)",
