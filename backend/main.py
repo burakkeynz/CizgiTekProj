@@ -58,21 +58,7 @@ async def connect(sid, environ):
 async def join(sid, data):
     user_id = str(data.get("user_id"))
     print(f"[Socket][JOIN] user_id={user_id}, sid={sid}")
-    print("[Socket][JOIN] globals_mod.connected_users id:", id(globals_mod.connected_users), "content:", globals_mod.connected_users)
     globals_mod.connected_users[user_id] = sid
-    print("[Socket][JOIN] GÜNCEL connected_users:", globals_mod.connected_users)
-
-    db = next(get_db())
-    user = db.query(Users).filter(Users.id == int(user_id)).first()
-    if user:
-        user.status = "online"
-        db.commit()
-        print(f"[Socket][JOIN] Kullanıcı {user_id} -> online yapıldı.")
-        await sio.emit("user_status_update", {
-            "user_id": user.id,
-            "status": "online"
-        })
-
 
 @sio.event
 async def typing(sid, data):
@@ -101,25 +87,9 @@ async def disconnect(sid):
         if stored_sid == sid:
             disconnected_user_id = uid
             break
-
-    print("[Socket][DISCONNECT] globals_mod.connected_users id:", id(globals_mod.connected_users), "content:", globals_mod.connected_users)
     if disconnected_user_id:
-        print(f"[Socket][DISCONNECT] user_id={disconnected_user_id} SID={sid} disconnected.")
         del globals_mod.connected_users[disconnected_user_id]
-        print("[Socket][DISCONNECT] GÜNCEL connected_users:", globals_mod.connected_users)
-
-        db = next(get_db())
-        user = db.query(Users).filter(Users.id == disconnected_user_id).first()
-        if user:
-            user.status = "offline"
-            db.commit()
-            print(f"[Socket][DISCONNECT] Kullanıcı {user.id} -> offline yapıldı.")
-            await sio.emit("user_status_update", {
-                "user_id": user.id,
-                "status": "offline"
-            })
-    else:
-        print(f"[Socket][DISCONNECT] SID={sid} için eşleşen user_id bulunamadı!")
+        print(f"[Socket][DISCONNECT] user_id={disconnected_user_id} SID={sid} disconnected.")
 
 # WebRTC Signaling Events 
 @sio.on("webrtc_offer")
@@ -167,5 +137,22 @@ async def webrtc_call_end(sid, data):
         print(f"[WebRTC][CALL END] EMIT EDİLDİ -> {to_sid}")
     else:
         print(f"[WebRTC][CALL END] Kullanıcı çevrimdışı!")
+        
+@sio.on("user_status")
+async def user_status(sid, data):
+    user_id = data.get("user_id")
+    status = data.get("status")
+    if not user_id or not status:
+        return
+    db = next(get_db())
+    user = db.query(Users).filter(Users.id == int(user_id)).first()
+    if user:
+        user.status = status
+        db.commit()
+        print(f"[Socket][STATUS] Kullanıcı {user_id} -> {status} yapıldı.")
+        await sio.emit("user_status_update", {
+            "user_id": user.id,
+            "status": status
+        })
 
 sio_app = app

@@ -3,38 +3,29 @@ import api from "../api";
 
 function UserInfoCard({ user, setUser, expiresIn }) {
   const [timeLeft, setTimeLeft] = useState(expiresIn);
-  const [status, setStatus] = useState(user.status || "online");
 
   useEffect(() => {
     setTimeLeft(expiresIn);
     if (!expiresIn || expiresIn <= 0) return;
-
     const timeout = setTimeout(() => {
       window.location.href = "/session-expired";
     }, expiresIn * 1000);
-
     const interval = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
-
     return () => {
       clearTimeout(timeout);
       clearInterval(interval);
     };
   }, [expiresIn]);
 
-  useEffect(() => {
-    setStatus(user.status || "online");
-  }, [user.status]);
-
   const handleStatusChange = async (e) => {
     const selected = e.target.value;
-    setStatus(selected);
     try {
       await api.put("/users/update-status", { status: selected });
       setUser((prev) => ({ ...prev, status: selected }));
     } catch (err) {
-      console.warn("Durum güncellenemedi:", err);
+      console.warn("Status update failed:", err);
     }
   };
 
@@ -49,6 +40,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
   };
 
   const fullName = `${user.role} ${user.first_name} ${user.last_name}`;
+  const isInCall = user.status === "in_call" || user.status === "oncall";
 
   return (
     <div
@@ -62,6 +54,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
         transition: "background 0.2s, color 0.2s",
       }}
     >
+      {/* Avatar */}
       <div
         style={{
           width: 70,
@@ -81,6 +74,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
         {user.first_name?.[0]?.toUpperCase() || "U"}
       </div>
 
+      {/* Name */}
       <div
         style={{
           fontWeight: 600,
@@ -93,7 +87,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
       </div>
 
       <select
-        value={status}
+        value={user.status}
         onChange={handleStatusChange}
         style={{
           marginBottom: 10,
@@ -105,14 +99,15 @@ function UserInfoCard({ user, setUser, expiresIn }) {
           background: "var(--input-bg)",
           border: "1px solid var(--input-border)",
         }}
+        disabled={isInCall}
       >
-        <option value="online">🟢 Çevrimiçi</option>
-        <option value="busy">🟠 Meşgul</option>
-        <option disabled value="oncall">
-          🔴 Aramada
+        <option value="online">🟢 Online</option>
+        <option value="busy">🟠 Busy</option>
+        <option value="in_call" disabled>
+          🔴 In Call
         </option>
-        <option disabled value="offline">
-          ⚪ Çevrimdışı
+        <option value="offline" disabled>
+          ⚪ Offline
         </option>
       </select>
 

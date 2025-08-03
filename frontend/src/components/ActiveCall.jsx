@@ -7,12 +7,11 @@ import {
   createPeerConnection,
   addLocalTracks,
   bindStreamToVideo,
-  closePeerConnection,
 } from "../utils/webrtc";
 import { useNavigate } from "react-router-dom";
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiX } from "react-icons/fi";
+import api from "../api";
 
-// UI helper
 function iconBtn(bg, color) {
   return {
     background: bg,
@@ -52,6 +51,7 @@ function cleanupAll(localVideoRef, remoteVideoRef, localStreamRef) {
 export default function ActiveCall({
   socket,
   currentUser,
+  setUser, // <-- YENİ! App.js'ten setUser'ı prop olarak al
   onMinimize,
   minimized,
 }) {
@@ -72,7 +72,17 @@ export default function ActiveCall({
   const [camOn, setCamOn] = useState(callType === "video");
   const [peerConnected, setPeerConnected] = useState(false);
 
-  // Tek seferlik cleanup fonksiyonu
+  useEffect(() => {
+    setUser?.((prev) => ({ ...prev, status: "in_call" }));
+    socket.emit("user_status", { user_id: currentUser.id, status: "in_call" });
+    api.put("/users/update-status", { status: "in_call" }).catch(() => {});
+    return () => {
+      setUser?.((prev) => ({ ...prev, status: "online" }));
+      socket.emit("user_status", { user_id: currentUser.id, status: "online" });
+      api.put("/users/update-status", { status: "online" }).catch(() => {});
+    };
+  }, []);
+
   function cleanupMedia() {
     if (cleanupCalledRef.current) return;
     cleanupCalledRef.current = true;
@@ -87,20 +97,21 @@ export default function ActiveCall({
     cleanupAll(localVideoRef, remoteVideoRef, localStreamRef);
   }
 
-  // Karşıdan "call end" gelirse anında cleanup ve slice reset, ardından sohbet ekranı!
   useEffect(() => {
     const handleCallEnd = () => {
       cleanupMedia();
       dispatch(endCall());
-      // Aktif sohbeti seçili bırak (mutlaka chat_id ile!)
       if (chat_id) {
         dispatch(setActiveChat(chat_id));
         navigate(`/chat/${chat_id}`);
       }
+      setUser?.((prev) => ({ ...prev, status: "online" }));
+      socket.emit("user_status", { user_id: currentUser.id, status: "online" });
+      api.put("/users/update-status", { status: "online" }).catch(() => {});
     };
     socket.on("webrtc_call_end", handleCallEnd);
     return () => socket.off("webrtc_call_end", handleCallEnd);
-  }, [socket, dispatch, chat_id, navigate]);
+  }, [socket, dispatch, chat_id, navigate, setUser, currentUser.id]);
 
   useEffect(() => {
     let ignore = false;
@@ -178,14 +189,7 @@ export default function ActiveCall({
 
         socket.on("webrtc_answer", async (data) => {
           if (data.from_user_id !== peerUser?.id) return;
-          // Sadece doğru signaling statede sdp answer işlemek için
-          if (!pc || pc.signalingState !== "have-local-offer") {
-            console.warn(
-              "[CALLER] SDP answer geldi ama signalingState:",
-              pc?.signalingState
-            );
-            return;
-          }
+          if (!pc || pc.signalingState !== "have-local-offer") return;
           try {
             await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
             for (const c of remoteCandidatesBuffer.current) {
@@ -218,7 +222,6 @@ export default function ActiveCall({
       } catch (err) {
         cleanupMedia();
         dispatch(endCall());
-        // Yine aktif chate kalmak için
         if (chat_id) {
           dispatch(setActiveChat(chat_id));
           navigate(`/chat/${chat_id}`);
@@ -251,7 +254,6 @@ export default function ActiveCall({
     }
   }, [peerConnected]);
 
-  // Butonlar
   const handleToggleMic = () => {
     setMicOn((prev) => {
       if (localStreamRef.current) {
@@ -281,6 +283,9 @@ export default function ActiveCall({
       chat_id,
     });
     dispatch(endCall());
+    setUser?.((prev) => ({ ...prev, status: "online" }));
+    socket.emit("user_status", { user_id: currentUser.id, status: "online" });
+    api.put("/users/update-status", { status: "online" }).catch(() => {});
     if (chat_id) {
       dispatch(setActiveChat(chat_id));
       navigate(`/chat/${chat_id}`);
@@ -306,7 +311,6 @@ export default function ActiveCall({
         transition: "box-shadow .2s, border .2s",
       }}
     >
-      {/* Minimize Button */}
       {typeof onMinimize === "function" && (
         <button
           style={{
@@ -333,7 +337,6 @@ export default function ActiveCall({
         </button>
       )}
 
-      {/* Video Area */}
       <div
         style={{
           width: "100%",
@@ -416,7 +419,6 @@ export default function ActiveCall({
         </div>
       </div>
 
-      {/* Controls */}
       <div
         style={{
           marginTop: 18,

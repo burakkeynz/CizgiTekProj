@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import store from "./store";
 import useAuthCheck from "./hooks/useAuthCheck";
 import Navbar from "./components/Navbar";
 import Assistant from "./components/Assistant";
@@ -23,8 +22,9 @@ import api from "./api";
 import { io } from "socket.io-client";
 import CallModal from "./components/CallModal";
 import ActiveCallOverlay from "./components/ActiveCallOverlay";
-import { useSelector, useDispatch } from "react-redux";
+import { useDispatch } from "react-redux";
 import { receiveCall } from "./store/callSlice";
+import store from "./store";
 
 function App() {
   const location = useLocation();
@@ -39,15 +39,38 @@ function App() {
   ];
   const isPublicRoute = authCheckRoutes.includes(pathname);
   const shouldCheckSession = !isPublicRoute;
-  const { hasSession, user, expiresIn, expired } =
-    useAuthCheck(shouldCheckSession);
+  const {
+    hasSession,
+    user: userFromAuth,
+    expiresIn,
+    expired,
+  } = useAuthCheck(shouldCheckSession);
 
+  // Local user state (hem F5 sonrası hem anlık statü için)
+  const [user, setUser] = useState(userFromAuth);
+  // App seviyesinde conversations
+  const [conversations, setConversations] = useState([]);
   const [logs, setLogs] = useState([]);
   const [socket, setSocket] = useState(null);
 
-  const call = useSelector((state) => state.call);
   const dispatch = useDispatch();
 
+  // useAuthCheck'ten user güncellenirse local state de güncellenir
+  useEffect(() => {
+    setUser(userFromAuth);
+  }, [userFromAuth]);
+
+  // Conversationları yükle
+  useEffect(() => {
+    if (hasSession) {
+      api
+        .get("/conversations/my")
+        .then((res) => setConversations(res.data))
+        .catch(() => {});
+    }
+  }, [hasSession]);
+
+  // Socket kurulumu
   useEffect(() => {
     if (hasSession !== true || !user || !user.id) {
       if (socket) {
@@ -70,25 +93,50 @@ function App() {
     });
     s.on("connect_error", (err) => console.error("❌ SOCKET error", err));
 
+    // Tüm kullanıcıların statüsü güncellenirse conversations'ı da güncelle
+    s.on("user_status_update", (data) => {
+      // 1. Eğer kendi user'ınsa:
+      if (String(data.user_id) === String(user.id)) {
+        setUser((prev) => (prev ? { ...prev, status: data.status } : prev));
+      }
+      // 2. Diğer user ise conversations içinden update
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.user && String(conv.user.id) === String(data.user_id)
+            ? {
+                ...conv,
+                user: {
+                  ...conv.user,
+                  status: data.status,
+                },
+              }
+            : conv
+        )
+      );
+    });
+
     return () => {
       s.disconnect();
     };
-  }, [user?.id]);
+    // eslint-disable-next-line
+  }, [user?.id, hasSession]);
 
+  // WebRTC offer için dinleyici
   useEffect(() => {
     if (!socket) return;
     const onOffer = (data) => {
-      console.log("[DEBUG][GLOBAL][WebRTC][OFFER] ALINDI (App.js):", data);
       dispatch(receiveCall(data));
     };
     socket.on("webrtc_offer", onOffer);
     return () => socket.off("webrtc_offer", onOffer);
   }, [socket, dispatch]);
 
+  // Sayfa değişince redirect flag'ini sıfırla
   useEffect(() => {
     alreadyRedirected.current = false;
   }, [pathname]);
 
+  // ChatLog işlemleri
   const handleNewLog = (log) => setLogs((prev) => [log, ...prev]);
   const handleDelete = async (id) => {
     if (typeof id === "string" && id.startsWith("temp-")) {
@@ -101,22 +149,7 @@ function App() {
     } catch (e) {}
   };
 
-  //Debug
-  useEffect(() => {
-    if (!socket) return;
-    const onOffer = (data) => {
-      console.log("[DEBUG][App.js][OFFER] Alındı:", data);
-      dispatch(receiveCall(data));
-      setTimeout(() => {
-        // Redux state'i gerçekten güncelleniyor mu?
-        const call = store.getState().call;
-        console.log("[DEBUG][App.js][AFTER_DISPATCH] call slice:", call);
-      }, 300);
-    };
-    socket.on("webrtc_offer", onOffer);
-    return () => socket.off("webrtc_offer", onOffer);
-  }, [socket, dispatch]);
-
+  // ChatLogları yükle
   useEffect(() => {
     if (hasSession) {
       api
@@ -126,6 +159,7 @@ function App() {
     }
   }, [hasSession]);
 
+  // Session kontrol ve yönlendirme
   useEffect(() => {
     if (alreadyRedirected.current) return;
     if (hasSession === false && shouldCheckSession) {
@@ -167,9 +201,26 @@ function App() {
           <Route path="/sessions" element={<Sessions />} />
           <Route
             path="/chat"
-            element={<Chat currentUser={user} socket={socket} />}
+            element={
+              <Chat
+                currentUser={user}
+                socket={socket}
+                conversations={conversations}
+                setConversations={setConversations}
+              />
+            }
           >
-            <Route path=":conversationId" element={<ChatDetail />} />
+            <Route
+              path=":conversationId"
+              element={
+                <ChatDetail
+                  currentUser={user}
+                  socket={socket}
+                  conversations={conversations}
+                  setConversations={setConversations}
+                />
+              }
+            />
           </Route>
           <Route path="/settings" element={<Settings />} />
           <Route
@@ -198,13 +249,24 @@ function App() {
             transition: "background 0.18s, color 0.18s",
           }}
         >
-          {user && <UserInfoCard user={user} expiresIn={expiresIn} />}
+          {user && (
+            <UserInfoCard user={user} setUser={setUser} expiresIn={expiresIn} />
+          )}
           <Assistant onNewLog={handleNewLog} />
         </div>
       )}
-      {showLayout && <CallModal socket={socket} currentUser={user} />}
-      {showLayout && <ActiveCallOverlay socket={socket} currentUser={user} />}
+      {showLayout && (
+        <CallModal socket={socket} currentUser={user} setUser={setUser} />
+      )}
+      {showLayout && (
+        <ActiveCallOverlay
+          socket={socket}
+          currentUser={user}
+          setUser={setUser}
+        />
+      )}
     </div>
   );
 }
+
 export default App;

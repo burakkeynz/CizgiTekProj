@@ -16,7 +16,7 @@ function findConversationIdByUsers(conversations, id1, id2) {
   )?.conversation_id;
 }
 
-export default function CallModal({ socket, currentUser }) {
+export default function CallModal({ socket, currentUser, setUser }) {
   const { inCall, incoming } = useSelector((state) => state.call);
   const conversations = useSelector((state) => state.chat.conversations || []);
   const peerUser = incoming?.from_user || {};
@@ -25,10 +25,8 @@ export default function CallModal({ socket, currentUser }) {
 
   if (!incoming || inCall) return null;
 
-  //öncelikli olarak incoming.chat_id
   let chatId = incoming.chat_id;
 
-  // yoksa sohbet listesinden çekme
   if (!chatId && conversations.length && peerUser?.id && currentUser?.id) {
     chatId = findConversationIdByUsers(
       conversations,
@@ -37,7 +35,6 @@ export default function CallModal({ socket, currentUser }) {
     );
   }
 
-  //Hala yoksa apiden başlatıp conversation_id cekme
   const handleAccept = async () => {
     let id = chatId;
     if (!id && peerUser?.id && currentUser?.id) {
@@ -55,7 +52,7 @@ export default function CallModal({ socket, currentUser }) {
         } else {
           const res = await api.post(
             "/conversations/start_conversation",
-            null, // body göndermiyorum backendle uyumlu
+            null,
             { params: { receiver_id: peerUser.id } }
           );
           id = res.data.conversation_id;
@@ -71,6 +68,14 @@ export default function CallModal({ socket, currentUser }) {
       alert("Couldn't find chat id.");
       return;
     }
+
+    // **Kabulde statü güncellemesi: hem local, hem socket, hem API**
+    setUser?.((prev) => ({ ...prev, status: "in_call" }));
+    socket.emit("user_status", { user_id: currentUser.id, status: "in_call" });
+    try {
+      await api.put("/users/update-status", { status: "in_call" });
+    } catch (err) {}
+
     dispatch(answerCall());
     navigate(`/chat/${id}`);
   };

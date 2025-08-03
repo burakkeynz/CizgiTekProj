@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
 import { useSelector } from "react-redux";
-// import ActiveCall from "./ActiveCall";
 import api from "../api";
 
 function getUserName(user) {
@@ -64,25 +63,28 @@ function lastMessagePreview(content) {
   return String(content).slice(0, 40);
 }
 
-export default function Chat({ currentUser, socket }) {
+export default function Chat({
+  currentUser,
+  socket,
+  conversations,
+  setConversations,
+}) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
   const { conversationId } = useParams();
   const call = useSelector((state) => state.call);
 
-  const [conversations, setConversations] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const convRes = await api.get("/conversations/my");
-      setConversations(convRes.data);
+    // Kullanıcıları çek, conversations artık App'ten geliyor!
+    const fetchUsers = async () => {
       const availRes = await api.get("/users/available");
       setAvailableUsers(availRes.data);
     };
-    fetchData();
+    fetchUsers();
   }, []);
 
   const handleUserSelect = async (user) => {
@@ -306,7 +308,9 @@ export default function Chat({ currentUser, socket }) {
         }}
       >
         {conversationId ? (
-          <Outlet context={{ currentUser, socket, conversations }} />
+          <Outlet
+            context={{ currentUser, socket, conversations, setConversations }}
+          />
         ) : (
           <div
             style={{

@@ -130,7 +130,7 @@ async def get_me(
         "role": db_user.role,
         "id": db_user.id,
         "expires_in": expires_in,
-        "status": db_user.status 
+        "status": db_user.status
     }
 
 
@@ -166,6 +166,11 @@ async def login_token(
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(status_code=401, detail="Credentials invalid")
+    
+    # sadece offline ise bir defalık online çevirmesi
+    if user.status == "offline":
+        user.status = "online"
+        db.commit()
 
     access_token = create_token(
         user.username,
@@ -185,11 +190,9 @@ async def login_token(
 
 @router.post("/logout")
 async def logout(response: Response, db: db_dependency, user_data: dict = Depends(get_current_user_from_cookie)):
-
     response.delete_cookie("access_token", path="/")
     user = db.query(Users).filter(Users.id == user_data["id"]).first()
     if user:
         user.status = "offline"
         db.commit()
-
     return {"message": "Logged out successfully"}

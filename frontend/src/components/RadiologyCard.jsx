@@ -11,7 +11,7 @@ export default function RadiologyCards({ selectedId, setSelectedId, data }) {
           color: "var(--accent-hover)",
         }}
       >
-        Radyoloji Görüntüleri
+        Radiogoly Results
       </h3>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         {data.map((item) => {

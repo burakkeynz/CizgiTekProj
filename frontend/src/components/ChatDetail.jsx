@@ -7,7 +7,9 @@ import { startCall } from "../store/callSlice";
 
 import api from "../api";
 
-function getStatusText(status) {
+// Aramadaki kişinin status ve label'ı dinamik gösteren fonksiyon
+function getStatusText(status, inCall) {
+  if (inCall) return "Aramada";
   switch (status) {
     case "online":
       return "Çevrimiçi";
@@ -21,7 +23,8 @@ function getStatusText(status) {
       return "Bilinmiyor";
   }
 }
-function getStatusColor(status) {
+function getStatusColor(status, inCall) {
+  if (inCall) return "#f44336";
   switch (status) {
     case "online":
       return "#4caf50";
@@ -101,7 +104,7 @@ export default function ChatDetail() {
     selectMessages(state, conversationId)
   );
   const callState = useSelector((state) => state.call);
-  const { inCall } = callState;
+  const { inCall, peerUser } = callState; // peerUser=karşıdaki kişi objesi
   const messageEndRef = useRef(null);
   const fileInputRef = useRef();
   const [newMessage, setNewMessage] = useState("");
@@ -110,11 +113,10 @@ export default function ChatDetail() {
   const [headerVisible, setHeaderVisible] = useState(!inCall);
   useEffect(() => {
     if (!inCall) {
-      // Arama bittiğinde header'ı delayli göster
-      const timeout = setTimeout(() => setHeaderVisible(true), 800); // 0.8sn delay
+      const timeout = setTimeout(() => setHeaderVisible(true), 800);
       return () => clearTimeout(timeout);
     } else {
-      setHeaderVisible(false); // Arama açıldığında hemen gizle
+      setHeaderVisible(false);
     }
   }, [inCall]);
 
@@ -132,7 +134,7 @@ export default function ChatDetail() {
     }
   }, [selectedChat, conversationId, dispatch]);
 
-  // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at (Sadece conversationId/selectedChat yoksa!)
+  // --- Güvenlik: Bağlantı veya sohbet yoksa chat'e at
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId) {
       navigate("/chat", { replace: true });
@@ -146,7 +148,6 @@ export default function ChatDetail() {
     socket.on("disconnect", onDisconnect);
     return () => socket.off("disconnect", onDisconnect);
   }, [currentUser, conversationId, socket, navigate]);
-  // --- DİKKAT: selectedChat veya inCall değişiminde yönlendirme YOK!
 
   // --- Mesajları çek
   useEffect(() => {
@@ -166,7 +167,6 @@ export default function ChatDetail() {
   // --- Socket eventleri: mesaj & typing
   useEffect(() => {
     if (!socket || !currentUser?.id || !selectedChat) return;
-
     const handleReceiveMessage = (data) => {
       if (
         String(data.conversation_id) === String(selectedChat.conversation_id)
@@ -217,7 +217,7 @@ export default function ChatDetail() {
   const [typingVisible, setTypingVisible] = useState(false);
   const typingTimeout = useRef(null);
   const lastTypingAt = useRef(0);
-  const TYPING_EMIT_INTERVAL = 1000; // ms
+  const TYPING_EMIT_INTERVAL = 1000;
   const lastEmitTimeRef = useRef(0);
 
   const handleInputChange = (e) => {
@@ -275,6 +275,16 @@ export default function ChatDetail() {
     );
   }
 
+  // ===> **Burada logic: Eğer aramada ve peerUser, bu sohbetin kullanıcısıysa "Aramada" göster**
+  let showCallStatus = false;
+  if (
+    inCall &&
+    peerUser &&
+    String(peerUser.id) === String(selectedChat.user.id)
+  ) {
+    showCallStatus = true;
+  }
+
   const iconBtnStyle = {
     background: "none",
     border: "none",
@@ -302,8 +312,6 @@ export default function ChatDetail() {
         overflow: "hidden",
       }}
     >
-      {/* <ActiveCallOverlay socket={socket} currentUser={currentUser} /> */}
-
       {/* chat alanI */}
       <div
         style={{
@@ -311,7 +319,7 @@ export default function ChatDetail() {
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          paddingTop: inCall ? 18 : 0, // Sadece çağrı varsa üstte çizgi için boşluk
+          paddingTop: inCall ? 18 : 0,
           transition: "padding-top .22s",
         }}
       >
@@ -350,12 +358,15 @@ export default function ChatDetail() {
                       width: 8,
                       height: 8,
                       borderRadius: "50%",
-                      backgroundColor: getStatusColor(selectedChat.user.status),
+                      backgroundColor: getStatusColor(
+                        selectedChat.user.status,
+                        showCallStatus
+                      ),
                       marginRight: 6,
                     }}
                   />
                   <span style={{ color: "#888" }}>
-                    {getStatusText(selectedChat.user.status)}
+                    {getStatusText(selectedChat.user.status, showCallStatus)}
                   </span>
                 </div>
               </div>
