@@ -8,6 +8,7 @@ import { ThemeProvider } from "./components/ThemeContext";
 import { Provider } from "react-redux";
 import store from "./store";
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
+import { LanguageProvider } from "./components/LanguageContext";
 
 const queryClient = new QueryClient();
 const root = ReactDOM.createRoot(document.getElementById("root"));
@@ -16,11 +17,13 @@ root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <Provider store={store}>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </Provider>
+        <LanguageProvider>
+          <Provider store={store}>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </Provider>
+        </LanguageProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>
