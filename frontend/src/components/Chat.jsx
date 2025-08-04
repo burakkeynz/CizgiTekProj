@@ -21,7 +21,7 @@ function UserAvatar({ user }) {
         width: 38,
         height: 38,
         borderRadius: "50%",
-        background: "#344153",
+        background: "var(--nav-bg-hover)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -30,11 +30,22 @@ function UserAvatar({ user }) {
       {user?.profile_picture_url ? (
         <img
           src={user.profile_picture_url}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            borderRadius: "50%",
+          }}
           alt="Avatar"
         />
       ) : (
-        <div style={{ fontWeight: "bold", color: "#fff", fontSize: 18 }}>
+        <div
+          style={{
+            fontWeight: "bold",
+            color: "var(--text-main)",
+            fontSize: 18,
+          }}
+        >
           {name[0]?.toUpperCase() || "?"}
         </div>
       )}
@@ -79,7 +90,6 @@ export default function Chat({
   const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
-    // Kullanıcıları çek
     const fetchUsers = async () => {
       const availRes = await api.get("/users/available");
       setAvailableUsers(availRes.data);
@@ -112,20 +122,21 @@ export default function Chat({
         display: "flex",
         height: "100vh",
         fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
-        background: "#10131a",
+        background: "var(--bg-main)",
       }}
     >
-      {/* sol panel*/}
+      {/* Sol panel */}
       <div
         style={{
           width: 320,
-          borderRight: "1.5px solid #242a35",
-          background: "#161b22",
-          color: "#eceef2",
+          borderRight: "1.5px solid var(--border-card)",
+          background: "var(--nav-bg)",
+          color: "var(--text-main)",
           padding: 0,
           overflowY: "auto",
           position: "relative",
           boxShadow: "2px 0 10px #0002",
+          transition: "background .2s, color .2s",
         }}
       >
         <div
@@ -136,11 +147,18 @@ export default function Chat({
             padding: "18px 22px 12px 22px",
             fontWeight: 700,
             fontSize: 22,
-            borderBottom: "1px solid #23272f",
-            background: "#161b22",
+            borderBottom: "1px solid var(--border-card)",
+            background: "var(--nav-bg)",
+            transition: "background .2s, color .2s",
           }}
         >
-          <span style={{ fontWeight: 700, fontSize: 21, color: "#e8ecf4" }}>
+          <span
+            style={{
+              fontWeight: 700,
+              fontSize: 21,
+              color: "var(--text-label)",
+            }}
+          >
             Chats
           </span>
           <button
@@ -157,9 +175,9 @@ export default function Chat({
               cursor: "pointer",
               marginLeft: 6,
               marginTop: 2,
-              background: isDark ? "#5c93f7" : "#4285f4",
+              background: "var(--accent-color)",
               color: "#fff",
-              boxShadow: "0 2px 12px #3571c555, 0 1px 4px #0001",
+              boxShadow: "0 2px 12px var(--accent-muted), 0 1px 4px #0001",
               transition: "background .17s, box-shadow .17s",
             }}
             onClick={() => setShowDropdown((v) => !v)}
@@ -173,7 +191,7 @@ export default function Chat({
             style={{
               margin: "auto",
               fontSize: 19,
-              color: isDark ? "#555" : "#bbb",
+              color: "var(--text-muted)",
               textAlign: "center",
             }}
           >
@@ -189,15 +207,13 @@ export default function Chat({
               gap: 13,
               padding: "13px 16px",
               cursor: "pointer",
-              borderBottom: "1px solid #202534",
+              borderBottom: "1px solid var(--border-card)",
               fontSize: 16,
               borderRadius: 10,
               transition: "background .17s",
               background:
                 String(conversationId) === String(c.conversation_id)
-                  ? isDark
-                    ? "#222b39"
-                    : "#dde5fa"
+                  ? "var(--nav-bg-active)"
                   : "transparent",
               marginBottom: 2,
             }}
@@ -205,13 +221,19 @@ export default function Chat({
           >
             <UserAvatar user={c.user} />
             <div>
-              <div style={{ fontWeight: 600, fontSize: 16, color: "#e7ecfb" }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 16,
+                  color: "var(--text-label)",
+                }}
+              >
                 {getUserName(c.user)}
               </div>
               <div
                 style={{
                   fontSize: 13,
-                  color: "#8ea0c6",
+                  color: "var(--text-muted)",
                   marginTop: 2,
                   whiteSpace: "nowrap",
                   textOverflow: "ellipsis",
@@ -237,12 +259,12 @@ export default function Chat({
               right: 0,
               zIndex: 999,
               borderRadius: 14,
-              boxShadow: isDark ? "0 6px 24px #0004" : "0 6px 24px #0002",
+              boxShadow: isDark ? "0 6px 24px #0004" : "0 6px 24px #b1bfd622",
               padding: "16px 10px 10px 10px",
               minHeight: 85,
               minWidth: 240,
-              background: isDark ? "#28292b" : "#fff",
-              color: isDark ? "#fff" : "#23272f",
+              background: "var(--card-bg)",
+              color: "var(--text-main)",
               animation: "dropdownAnim 0.13s",
             }}
           >
@@ -253,7 +275,7 @@ export default function Chat({
                 justifyContent: "space-between",
                 marginBottom: 8,
                 padding: "0 8px",
-                color: "#cfd6ea",
+                color: "var(--text-muted)",
                 fontWeight: 600,
               }}
             >
@@ -266,7 +288,13 @@ export default function Chat({
               </span>
             </div>
             {availableUsers.length === 0 && (
-              <div style={{ padding: 24, color: "#bbb", textAlign: "center" }}>
+              <div
+                style={{
+                  padding: 24,
+                  color: "var(--text-muted)",
+                  textAlign: "center",
+                }}
+              >
                 Kullanıcı yok
               </div>
             )}
@@ -279,7 +307,7 @@ export default function Chat({
                   gap: 13,
                   padding: "13px 16px",
                   cursor: "pointer",
-                  borderBottom: "1px solid #202534",
+                  borderBottom: "1px solid var(--border-card)",
                   fontSize: 16,
                   borderRadius: 10,
                   background: "transparent",
@@ -294,7 +322,7 @@ export default function Chat({
           </div>
         )}
       </div>
-      {/* orta panel */}
+      {/* Orta panel */}
       <div
         id="main-chat-panel"
         style={{
@@ -304,7 +332,8 @@ export default function Chat({
           flexDirection: "column",
           minHeight: 0,
           minWidth: 0,
-          background: isDark ? "#181a1b" : "#fff",
+          background: "var(--bg-main)",
+          transition: "background .2s, color .2s",
         }}
       >
         {conversationId ? (
@@ -318,7 +347,7 @@ export default function Chat({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: isDark ? "#aaa" : "#555",
+              color: "var(--text-muted)",
               fontSize: 24,
               letterSpacing: 0.3,
               fontWeight: 500,

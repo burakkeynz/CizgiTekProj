@@ -4,39 +4,52 @@ import { useLocation } from "react-router-dom";
 import api from "../api";
 import { useTheme } from "./ThemeContext";
 import FilePreviewModal from "./FilePreviewModal";
+import { MessageList } from "@chatscope/chat-ui-kit-react";
 
 const SESSION_KEY = "ai_assistang_logs:";
 const INITIAL_MSG = [{ role: "model", text: "Hi! How can I help you?" }];
 
 function DotLoader() {
   return (
-    <span
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "100%",
-        minHeight: 28,
-      }}
-    >
-      <span className="dot">.</span>
-      <span className="dot">.</span>
-      <span className="dot">.</span>
+    <>
+      <span
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 28,
+          width: "100%",
+        }}
+      >
+        <span className="dot">.</span>
+        <span className="dot">.</span>
+        <span className="dot">.</span>
+      </span>
       <style>
         {`
-          .dot { animation: blink 1.4s infinite both; font-size: 22px; color: var(--accent-color);}
-          .dot:nth-child(2) { animation-delay: .2s; }
-          .dot:nth-child(3) { animation-delay: .4s; }
-          @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
+          .dot {
+            animation: blink 1.4s infinite both;
+            font-size: 22px;
+            color: var(--accent-color);
+            margin: 0 2px;
+            letter-spacing: 2px;
+          }
+          .dot:nth-child(2) { animation-delay: .18s; }
+          .dot:nth-child(3) { animation-delay: .36s; }
+          @keyframes blink {
+            0%{opacity:.25;}
+            20%{opacity:1;}
+            100%{opacity:.25;}
+          }
         `}
       </style>
-    </span>
+    </>
   );
 }
 
 function getS3KeyFromUrl(url) {
   const idx = url.indexOf(".amazonaws.com/");
-  if (idx === -1) return url; // zaten key
+  if (idx === -1) return url;
   return url.substring(idx + ".amazonaws.com/".length);
 }
 
@@ -52,7 +65,6 @@ function Assistant({ onNewLog }) {
       return true;
     }
   });
-
   const [messages, setMessages] = useState(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
@@ -61,8 +73,6 @@ function Assistant({ onNewLog }) {
       return INITIAL_MSG;
     }
   });
-
-  // Dosya önizleme modalı ve loading state
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -77,7 +87,16 @@ function Assistant({ onNewLog }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedFileUrl, setSelectedFileUrl] = useState(null);
-  const messagesEndRef = useRef(null);
+  const [streamText, setStreamText] = useState("");
+  const chatWrapperRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen || !chatWrapperRef.current) return;
+    chatWrapperRef.current.scrollTo({
+      top: chatWrapperRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, isOpen, streamText]);
 
   useEffect(() => {
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(isOpen));
@@ -87,15 +106,10 @@ function Assistant({ onNewLog }) {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages));
     } catch {}
   }, [messages]);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isOpen]);
-  useEffect(() => {
-    if (selectedFile) {
-      setSelectedFileUrl(URL.createObjectURL(selectedFile));
-    } else {
-      setSelectedFileUrl(null);
-    }
+    if (selectedFile) setSelectedFileUrl(URL.createObjectURL(selectedFile));
+    else setSelectedFileUrl(null);
     return () => {
       if (selectedFileUrl) URL.revokeObjectURL(selectedFileUrl);
     };
@@ -131,7 +145,6 @@ function Assistant({ onNewLog }) {
     if (loading || (!input.trim() && selectedFiles.length === 0)) return;
     setLoading(true);
 
-    // Önce dosyaları S3'e yükle
     let uploadedFiles = [];
     if (selectedFiles.length > 0) {
       try {
@@ -141,11 +154,7 @@ function Assistant({ onNewLog }) {
           const res = await api.post("/upload/file", data, {
             headers: { "Content-Type": "multipart/form-data" },
           });
-          return {
-            url: res.data.url, // S3 url
-            name: file.name,
-            type: file.type,
-          };
+          return { url: res.data.url, name: file.name, type: file.type };
         });
         uploadedFiles = await Promise.all(fileUploadPromises);
       } catch (err) {
@@ -155,50 +164,64 @@ function Assistant({ onNewLog }) {
       }
     }
 
-    const userMsg = {
-      role: "user",
-      text: input,
-      files: uploadedFiles,
-    };
-
-    setMessages((prev) => [
-      ...prev,
-      userMsg,
-      { role: "model", text: "...", isLoader: true },
+    const userMsg = { role: "user", text: input, files: uploadedFiles };
+    const allMsgs = [...messages, userMsg];
+    setMessages([
+      ...allMsgs,
+      { role: "model", text: "", isLoader: true, files: uploadedFiles },
     ]);
-
     setInput("");
     setSelectedFiles([]);
+    setStreamText("");
 
     try {
       const formData = new FormData();
       formData.append("message", input || "");
-      if (uploadedFiles.length > 0) {
-        uploadedFiles.forEach((file) => {
-          formData.append("files", file.url);
-        });
-      }
+      if (uploadedFiles.length > 0)
+        uploadedFiles.forEach((file) => formData.append("files", file.url));
       formData.append("web_search", activeTool === "search" ? "true" : "false");
-      formData.append("contents", JSON.stringify(messages));
+      formData.append("contents", JSON.stringify(allMsgs));
 
-      const res = await api.post("/gemini/chat", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const BASE_URL = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${BASE_URL}/gemini/chat/stream`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
       });
-      const responseText =
-        res.data?.response || res.data?.raw_response || "Yanıt yok";
+
+      if (!response.body) throw new Error("Sunucudan yanıt alınamadı.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let runningText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        runningText += chunk;
+        setStreamText(runningText);
+        setMessages((msgs) => {
+          const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
+          return [
+            ...msgsWithoutLoader,
+            { role: "model", text: runningText, isLoader: true },
+          ];
+        });
+        await new Promise((r) => setTimeout(r, 10));
+      }
+
+      setStreamText("");
       setMessages((msgs) => {
         const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
-        return [...msgsWithoutLoader, { role: "model", text: responseText }];
+        return [...msgsWithoutLoader, { role: "model", text: runningText }];
       });
     } catch (err) {
+      setStreamText("");
       setMessages((msgs) => {
         const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
         return [
           ...msgsWithoutLoader,
-          {
-            role: "model",
-            text: "Bir hata oluştu, lütfen tekrar deneyin.",
-          },
+          { role: "model", text: "Bir hata oluştu, lütfen tekrar deneyin." },
         ];
       });
     } finally {
@@ -227,11 +250,7 @@ function Assistant({ onNewLog }) {
       setPreviewLoading(false);
       return;
     }
-    setPreview({
-      fileType: file.type,
-      fileUrl,
-      fileName: file.name,
-    });
+    setPreview({ fileType: file.type, fileUrl, fileName: file.name });
     setPreviewLoading(false);
   };
 
@@ -263,6 +282,43 @@ function Assistant({ onNewLog }) {
         💬
       </div>
     );
+  }
+
+  function renderLoader(msg) {
+    if (msg.isLoader && (!msg.text || msg.text.trim() === "")) {
+      if (msg.files && msg.files.length > 0) {
+        const label =
+          msg.files.length > 1
+            ? "Examining the files..."
+            : "Examining the file...";
+        return (
+          <span
+            style={{
+              fontSize: 16,
+              color: "var(--ai-assistant-loader)",
+              fontWeight: 500,
+            }}
+          >
+            {label}
+          </span>
+        );
+      }
+      // Web search için
+      if (activeTool === "search")
+        return (
+          <span
+            style={{
+              fontSize: 16,
+              color: "var(--ai-assistant-loader)",
+              fontWeight: 500,
+            }}
+          >
+            Searching Web...
+          </span>
+        );
+      return <DotLoader />;
+    }
+    return msg.text;
   }
 
   return (
@@ -311,167 +367,134 @@ function Assistant({ onNewLog }) {
       </div>
 
       <div
+        ref={chatWrapperRef}
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: "auto",
           padding: 14,
+          background: "var(--card-bg)",
           display: "flex",
           flexDirection: "column",
-          gap: 8,
-          background: "var(--card-bg)",
         }}
       >
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            style={{
-              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-              background:
-                msg.role === "user" ? "var(--accent-color)" : "var(--input-bg)",
-              color: msg.role === "user" ? "#fff" : "var(--text-main)",
-              padding: "8px 14px",
-              borderRadius: 12,
-              maxWidth: "78%",
-              whiteSpace: "pre-wrap",
-              fontSize: 15,
-              minHeight: msg.isLoader ? 28 : undefined,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              boxShadow:
-                msg.role === "user" ? "0 1px 4px var(--shadow-card)" : "none",
-              border:
-                msg.role === "user"
-                  ? "1px solid var(--accent-color)"
-                  : "1px solid var(--input-border)",
-              transition: "background 0.2s, color 0.2s",
-              position: "relative",
-            }}
-          >
-            {msg.files && msg.files.length > 0 && (
-              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                {msg.files.map((file, i) => (
-                  <div
-                    key={i}
-                    className="file-badge"
-                    onClick={() => handleFilePreview(file)}
-                    style={{
-                      background: "rgba(255,255,255,0.11)",
-                      color: "#fff",
-                      borderRadius: 7,
-                      padding: "5px 10px",
-                      fontSize: 13,
-                      marginBottom: 0,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      cursor: "pointer",
-                      border: "1.2px solid #fff2",
-                      minWidth: 130,
-                    }}
-                    title="Dosyayı önizle"
-                  >
-                    <FiFile style={{ marginRight: 3, opacity: 0.95 }} />
-                    <span
+        <MessageList>
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                marginBottom: 10,
+                width: "100%",
+              }}
+            >
+              <div
+                style={{
+                  // Sadece kendi mesajların sağa koyma
+                  alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+                  display: "flex",
+                  flexDirection: "column",
+                  width: "fit-content",
+                  maxWidth: "68%",
+                }}
+              >
+                {msg.files &&
+                  msg.files.length > 0 &&
+                  msg.role === "user" &&
+                  !msg.isLoader && (
+                    <div
                       style={{
-                        maxWidth: 100,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {file.name}
-                    </span>
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 12,
-                        opacity: 0.85,
                         display: "flex",
-                        alignItems: "center",
+                        flexDirection: "column",
+                        gap: 6,
+                        marginBottom: 6,
                       }}
-                      className="preview-hover-label"
                     >
-                      <FiEye size={13} style={{ marginRight: 2 }} /> Aç
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                      {msg.files.map((file, i) => (
+                        <div
+                          key={i}
+                          onClick={() => handleFilePreview(file)}
+                          style={{
+                            background: "rgba(255,255,255,0.13)",
+                            color: "#fff",
+                            borderRadius: 7,
+                            padding: "5px 10px",
+                            fontSize: 13,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            cursor: "pointer",
+                            border: "1.2px solid #fff2",
+                            minWidth: 130,
+                          }}
+                          title="Dosyayı önizle"
+                        >
+                          <FiFile style={{ marginRight: 3, opacity: 0.95 }} />
+                          <span
+                            style={{
+                              maxWidth: 100,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {file.name}
+                          </span>
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              fontSize: 12,
+                              opacity: 0.85,
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <FiEye size={13} style={{ marginRight: 2 }} /> Aç
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-            {msg.fileName && (
-              <div
-                className="file-badge"
-                onClick={() =>
-                  handleFilePreview({
-                    type: msg.fileType,
-                    url: msg.fileUrl,
-                    name: msg.fileName,
-                  })
-                }
-                style={{
-                  background: "rgba(255,255,255,0.11)",
-                  color: "#fff",
-                  borderRadius: 7,
-                  padding: "5px 10px",
-                  fontSize: 13,
-                  marginBottom: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  cursor: "pointer",
-                  border: "1.2px solid #fff2",
-                  minWidth: 130,
-                }}
-                title="Dosyayı önizle"
-              >
-                <FiFile style={{ marginRight: 3, opacity: 0.95 }} />
-                <span
+                <div
                   style={{
-                    maxWidth: 100,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    background:
+                      msg.role === "user"
+                        ? "var(--accent-color)"
+                        : "var(--input-bg)",
+                    color: msg.role === "user" ? "#fff" : "var(--text-main)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    minHeight: 28,
+                    padding: "10px 16px",
+                    borderRadius: 16,
+                    border:
+                      msg.role === "user"
+                        ? "1px solid var(--accent-color)"
+                        : "1px solid var(--input-border)",
+                    boxShadow:
+                      msg.role === "user"
+                        ? "0 1px 4px var(--shadow-card)"
+                        : "none",
+                    fontSize: 15,
+                    marginLeft: msg.role === "user" ? 30 : 0,
+                    marginRight: msg.role === "model" ? 30 : 0,
+                    marginBottom: 2,
+                    borderTopRightRadius: msg.role === "user" ? 4 : 16,
+                    borderTopLeftRadius: msg.role === "model" ? 4 : 16,
+                    alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+                    transition: "background 0.2s, color 0.2s",
+                    width: "fit-content",
+                    maxWidth: "100%",
                   }}
                 >
-                  {msg.fileName}
-                </span>
-                <span
-                  style={{
-                    marginLeft: 6,
-                    fontSize: 12,
-                    opacity: 0.85,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                  className="preview-hover-label"
-                >
-                  <FiEye size={13} style={{ marginRight: 2 }} /> Aç
-                </span>
+                  {msg.isLoader ? renderLoader(msg) : msg.text}
+                </div>
               </div>
-            )}
-
-            {msg.isLoader ? (
-              <div
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: 28,
-                  padding: 0,
-                  margin: 0,
-                }}
-              >
-                <DotLoader />
-              </div>
-            ) : (
-              msg.text
-            )}
-          </div>
-        ))}
-
-        <div ref={messagesEndRef} />
+            </div>
+          ))}
+        </MessageList>
       </div>
 
       {preview && (
@@ -517,8 +540,7 @@ function Assistant({ onNewLog }) {
               transition: "background 0.18s, color 0.18s",
             }}
           >
-            <FiSearch />
-            Web Search
+            <FiSearch /> Web Search
           </button>
 
           <label
@@ -544,8 +566,7 @@ function Assistant({ onNewLog }) {
               position: "relative",
             }}
           >
-            <FiUpload />
-            Add photos & files
+            <FiUpload /> Add photos & files
             <input
               id="file-upload"
               type="file"
@@ -562,10 +583,8 @@ function Assistant({ onNewLog }) {
                         (f) => f.name === file.name && f.size === file.size
                       )
                   );
-                  // En fazla 5 tane dosya
-                  if (unique.length > 5) {
+                  if (unique.length > 5)
                     alert("En fazla 5 dosya seçebilirsiniz!");
-                  }
                   return unique.slice(0, 5);
                 });
                 setActiveTool("upload");
@@ -573,7 +592,6 @@ function Assistant({ onNewLog }) {
             />
           </label>
         </div>
-
         {selectedFiles.length > 0 && (
           <div
             style={{
@@ -650,7 +668,11 @@ function Assistant({ onNewLog }) {
           }}
         />
         <div
-          style={{ display: "flex", justifyContent: "space-between", gap: 8 }}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
         >
           <button
             onClick={sendMessage}

@@ -6,6 +6,7 @@
   --nav-bg-active: #e3f1ff; /*açık mavi arkaplan */
   --nav-bg-hover: #e8f3fd; /*biraz daha koyu hover için */
   --nav-icon: #3396fe; /*icon accent */
+  --ai-assistant-loader: ##e3f1ff;
 
   --text-main: #23272f;
   --text-muted: #8e98a6;
@@ -46,6 +47,7 @@ body[data-theme="dark"] {
   --nav-bg-active: #203453;
   --nav-bg-hover: #1d2844;
   --nav-icon: #4da5ff;
+  --ai-assistant-loader: #e3f1ff;
 }
 
 body {
@@ -64,4 +66,14 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+.cs-message-list,
+.cs-message-list__scroll-wrapper,
+.cs-main,
+.cs-panel,
+.cs-message-list__container,
+.cs-message-list__wrapper {
+  background: var(--card-bg) !important;
+  transition: background 0.2s;
 }
