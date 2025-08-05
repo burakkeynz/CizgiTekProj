@@ -8,6 +8,7 @@ import {
   addLocalTracks,
   bindStreamToVideo,
 } from "../utils/webrtc";
+import { useLanguage } from "./LanguageContext";
 import { useNavigate } from "react-router-dom";
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiX } from "react-icons/fi";
 import api from "../api";
@@ -59,7 +60,8 @@ export default function ActiveCall({
   const { peerUser, callType, isStarter, incoming, chat_id } = callState;
   const dispatch = useDispatch();
   const navigate = useNavigate();
-
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
   const localVideoRef = useRef();
   const remoteVideoRef = useRef();
   const peerConnectionRef = useRef(null);
@@ -331,7 +333,7 @@ export default function ActiveCall({
             transition: "background .13s",
           }}
           onClick={onMinimize}
-          title="Minimize Et"
+          title={t("Minimize", "Minimize et ")}
         >
           &#8211;
         </button>
@@ -413,7 +415,7 @@ export default function ActiveCall({
                 textAlign: "center",
               }}
             >
-              Waiting network connection…
+              {t("waiting_connection", "Ağ bağlantısı bekleniyor…")}
             </span>
           )}
         </div>
@@ -430,7 +432,11 @@ export default function ActiveCall({
       >
         <button
           onClick={handleToggleMic}
-          title={micOn ? "Mikrofonu Kapat" : "Mikrofonu Aç"}
+          title={
+            micOn
+              ? t("Turn off the mic ", "Mikrofonu Kapat")
+              : t("Turn on the mic", "Mikrofonu Aç")
+          }
           style={iconBtn(
             micOn ? "#212539" : "#fff",
             micOn ? "#fff" : "#ff3c5c"
@@ -441,7 +447,11 @@ export default function ActiveCall({
         {callType === "video" && (
           <button
             onClick={handleToggleCam}
-            title={camOn ? "Kamerayı Kapat" : "Kamerayı Aç"}
+            title={
+              camOn
+                ? t("Turn off the cam", "Kamerayı Kapat")
+                : t("Turn on the cam", "Kamerayı Aç")
+            }
             style={iconBtn(
               camOn ? "#212539" : "#fff",
               camOn ? "#fff" : "#ff3c5c"
@@ -452,7 +462,7 @@ export default function ActiveCall({
         )}
         <button
           onClick={handleEndCall}
-          title="Görüşmeyi Bitir"
+          title={t("End call", "Görüşmeyi Bitir")}
           style={iconBtn("#fff", "#ff3c5c")}
         >
           <FiX />

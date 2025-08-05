@@ -4,6 +4,7 @@ import { answerCall, endCall } from "../store/callSlice";
 import { setConversations } from "../store/chatSlice";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
+import { useLanguage } from "./LanguageContext";
 
 // Kullanıcılar arasında mevcut sohbet id
 function findConversationIdByUsers(conversations, id1, id2) {
@@ -17,6 +18,9 @@ function findConversationIdByUsers(conversations, id1, id2) {
 }
 
 export default function CallModal({ socket, currentUser, setUser }) {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
   const { inCall, incoming } = useSelector((state) => state.call);
   const conversations = useSelector((state) => state.chat.conversations || []);
   const peerUser = incoming?.from_user || {};
@@ -59,17 +63,16 @@ export default function CallModal({ socket, currentUser, setUser }) {
         }
         dispatch(setConversations(listRes.data));
       } catch (e) {
-        alert("Something went wrong.");
+        alert(t("Something went wrong.", "Bir şeyler yanlış gitti."));
         return;
       }
     }
 
     if (!id) {
-      alert("Couldn't find chat id.");
+      alert(t("Couldn't find chat id.", "Sohbet kimliği bulunamadı."));
       return;
     }
 
-    // kabul edilince in call dönüşmesi
     setUser?.((prev) => ({ ...prev, status: "in_call" }));
     socket.emit("user_status", { user_id: currentUser.id, status: "in_call" });
     try {
@@ -107,12 +110,15 @@ export default function CallModal({ socket, currentUser, setUser }) {
         <b>
           {peerUser?.first_name || peerUser?.username || incoming.from_user_id}
         </b>{" "}
-        sends you
+        {t("sends you a", "sana bir")}{" "}
         <span style={{ color: "#5c93f7", marginLeft: 7 }}>
-          {incoming.call_type === "video" ? "video" : "audio"}
+          {incoming.call_type === "video"
+            ? t("video", "görüntülü")
+            : t("audio", "sesli")}
         </span>{" "}
-        call!
+        {t("call!", "arama gönderiyor!")}
       </div>
+
       <div style={{ display: "flex", gap: 18, marginTop: 10 }}>
         <button
           onClick={handleAccept}
@@ -128,7 +134,7 @@ export default function CallModal({ socket, currentUser, setUser }) {
             boxShadow: "0 1px 8px #1a432055",
           }}
         >
-          Accept
+          {t("Accept", "Kabul Et")}
         </button>
         <button
           onClick={() => dispatch(endCall())}
@@ -144,7 +150,7 @@ export default function CallModal({ socket, currentUser, setUser }) {
             boxShadow: "0 1px 8px #431a1a55",
           }}
         >
-          Reject
+          {t("Reject", "Reddet")}
         </button>
       </div>
       <style>

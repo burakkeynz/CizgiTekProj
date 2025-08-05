@@ -10,49 +10,59 @@ import {
   FiFileText,
 } from "react-icons/fi";
 import { useTheme } from "./ThemeContext";
+import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
-const NAV_ITEMS = [
-  {
-    label: "Home",
-    to: "/dashboard",
-    icon: <FiHome size={26} />,
-  },
-  {
-    label: "Patients",
-    to: "/patients",
-    icon: <FiUsers size={26} />,
-  },
-  {
-    label: "Sessions",
-    to: "/sessions",
-    icon: <FiVideo size={26} />,
-  },
-  {
-    label: "Chats",
-    to: "/chat",
-    icon: <FiMessageCircle size={26} />,
-  },
-  {
-    label: "Logs",
-    to: "/logs",
-    icon: <FiFileText size={26} />,
-  },
-  {
-    label: "Settings",
-    to: "/settings",
-    icon: <FiSettings size={26} />,
-  },
-];
-
-function Navbar() {
+export default function Navbar({ user }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = useTheme();
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
+  const NAV_ITEMS = [
+    {
+      label: t("Home", "Ana Sayfa"),
+      to: "/dashboard",
+      icon: <FiHome size={26} />,
+    },
+    {
+      label: t("Patients", "Hastalar"),
+      to: "/patients",
+      icon: <FiUsers size={26} />,
+    },
+    {
+      label: t("Sessions", "Oturumlar"),
+      to: "/sessions",
+      icon: <FiVideo size={26} />,
+    },
+    {
+      label: t("Chats", "Sohbetler"),
+      to: "/chat",
+      icon: <FiMessageCircle size={26} />,
+    },
+    {
+      label: t("Logs", "Kayıtlar"),
+      to: "/logs",
+      icon: <FiFileText size={26} />,
+    },
+    {
+      label: t("Settings", "Ayarlar"),
+      to: "/settings",
+      icon: <FiSettings size={26} />,
+    },
+  ];
 
   const handleLogout = async () => {
     try {
-      localStorage.setItem("last_theme", theme);
+      if (window.socket && user && user.id) {
+        window.socket.emit("user_status", {
+          user_id: user.id,
+          status: "offline",
+        });
+      }
+      localStorage.setItem("pending_theme", theme);
+      localStorage.setItem("pending_language", language);
       await api.post("/auth/logout");
     } catch (err) {
       console.warn("Logout failed, proceeding anyway.");
@@ -77,39 +87,36 @@ function Navbar() {
       }}
     >
       <div style={{ width: "100%" }}>
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 15,
-              padding: "14px 30px",
-              color: location.pathname.startsWith(item.to)
-                ? "var(--accent-color)"
-                : "var(--text-main)",
-              background: location.pathname.startsWith(item.to)
-                ? "var(--nav-bg-active)"
-                : "var(--nav-bg)",
-              fontWeight: location.pathname.startsWith(item.to) ? "bold" : 400,
-              textDecoration: "none",
-              fontSize: 16,
-              borderRadius: 12,
-              marginBottom: 8,
-              transition: "all 0.17s",
-            }}
-          >
-            {React.cloneElement(item.icon, {
-              color: location.pathname.startsWith(item.to)
-                ? "var(--accent-color)"
-                : "var(--nav-icon)",
-            })}
-
-            <span>{item.label}</span>
-          </Link>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const isActive = location.pathname.startsWith(item.to);
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 15,
+                padding: "14px 30px",
+                color: isActive ? "var(--accent-color)" : "var(--text-main)",
+                background: isActive ? "var(--nav-bg-active)" : "var(--nav-bg)",
+                fontWeight: isActive ? "bold" : 400,
+                textDecoration: "none",
+                fontSize: 16,
+                borderRadius: 12,
+                marginBottom: 8,
+                transition: "all 0.17s",
+              }}
+            >
+              {React.cloneElement(item.icon, {
+                color: isActive ? "var(--accent-color)" : "var(--nav-icon)",
+              })}
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
       </div>
+
       <div
         onClick={handleLogout}
         style={{
@@ -127,10 +134,10 @@ function Navbar() {
         }}
       >
         <FiLogOut size={24} />
-        <span style={{ fontSize: 14, fontWeight: 500 }}>Logout</span>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>
+          {t("Logout", "Çıkış Yap")}
+        </span>
       </div>
     </div>
   );
 }
-
-export default Navbar;

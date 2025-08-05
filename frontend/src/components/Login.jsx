@@ -151,8 +151,8 @@ function Login() {
   React.useEffect(() => {
     const pendingTheme = localStorage.getItem("pending_theme");
     if (pendingTheme) setTheme(pendingTheme);
-    const pendingLanguage = localStorage.getItem("pending_language");
-    if (pendingLanguage) setLanguage(pendingLanguage);
+    const pendingLang = localStorage.getItem("pending_language");
+    if (pendingLang) setLanguage(pendingLang);
   }, [setTheme, setLanguage]);
 
   const handleLogin = async () => {
@@ -163,18 +163,21 @@ function Login() {
 
     try {
       await api.post("/auth/token", data);
+
       const pendingTheme = localStorage.getItem("pending_theme");
       if (pendingTheme) {
         setTheme(pendingTheme);
         localStorage.setItem("theme", pendingTheme);
         localStorage.removeItem("pending_theme");
       }
+
       const pendingLang = localStorage.getItem("pending_language");
       if (pendingLang) {
         setLanguage(pendingLang);
         localStorage.setItem("language", pendingLang);
         localStorage.removeItem("pending_language");
       }
+
       window.location.reload();
     } catch {
       setError(
@@ -229,7 +232,11 @@ function Login() {
             <LightIcon active={theme === "light"} />
             <Switch
               checked={theme === "dark"}
-              onChange={(checked) => setTheme(checked ? "dark" : "light")}
+              onChange={(checked) => {
+                const newTheme = checked ? "dark" : "light";
+                localStorage.setItem("pending_theme", newTheme);
+                setTheme(newTheme);
+              }}
             />
             <DarkIcon active={theme === "dark"} />
           </div>
@@ -237,7 +244,11 @@ function Login() {
             <FlagUSA active={language === "en"} />
             <Switch
               checked={language === "tr"}
-              onChange={(checked) => setLanguage(checked ? "tr" : "en")}
+              onChange={(checked) => {
+                const newLang = checked ? "tr" : "en";
+                localStorage.setItem("pending_language", newLang);
+                setLanguage(newLang);
+              }}
             />
             <FlagTR active={language === "tr"} />
           </div>
@@ -247,36 +258,11 @@ function Login() {
           style={{
             fontSize: 32,
             fontWeight: 700,
-            letterSpacing: ".2px",
-            marginBottom: 9,
+            marginBottom: 18,
             color: isDark ? "#4da5ff" : "#2d6be7",
-            textAlign: "center",
           }}
         >
           {language === "tr" ? "Giriş Yap" : "Login"}
-        </div>
-
-        <div
-          style={{
-            width: 55,
-            height: 55,
-            borderRadius: "50%",
-            background: isDark ? "#4da5ff" : "#28a745",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            margin: "0 auto 18px auto",
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="28"
-            height="28"
-            fill="#fff"
-            viewBox="0 0 24 24"
-          >
-            <path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z" />
-          </svg>
         </div>
 
         <input
@@ -293,14 +279,10 @@ function Login() {
             fontSize: "1rem",
             background: isDark ? "#23272f" : "#fff",
             color: isDark ? "#ecf1fa" : "#23272f",
-            outline: "none",
-            transition: "background 0.17s, color 0.17s, border 0.17s",
             fontWeight: 500,
+            outline: "none",
           }}
           autoFocus
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleLogin();
-          }}
         />
         <input
           type="password"
@@ -316,15 +298,13 @@ function Login() {
             fontSize: "1rem",
             background: isDark ? "#23272f" : "#fff",
             color: isDark ? "#ecf1fa" : "#23272f",
-            outline: "none",
-            transition: "background 0.17s, color 0.17s, border 0.17s",
             fontWeight: 500,
+            outline: "none",
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleLogin();
           }}
         />
-
         <button
           onClick={handleLogin}
           style={{
@@ -335,10 +315,9 @@ function Login() {
             border: "none",
             borderRadius: "8px",
             fontSize: "1rem",
-            cursor: "pointer",
             fontWeight: "bold",
             marginBottom: 10,
-            transition: "background 0.17s",
+            cursor: "pointer",
           }}
         >
           {language === "tr" ? "Giriş Yap" : "Login"}
@@ -347,10 +326,10 @@ function Login() {
         {error && (
           <div
             style={{
-              marginBottom: 10,
               color: "#e53749",
               fontWeight: 600,
               fontSize: 15,
+              marginBottom: 10,
             }}
           >
             {error}

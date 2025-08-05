@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import api from "../api";
+import { useLanguage } from "./LanguageContext";
 
 export default function PasswordSettings() {
+  const { language } = useLanguage();
+
   const [passwords, setPasswords] = useState({
     current: "",
     new: "",
@@ -12,20 +15,40 @@ export default function PasswordSettings() {
   const handlePasswordUpdate = async (e) => {
     e.preventDefault();
     setMessage("");
+
     if (passwords.new !== passwords.confirm) {
-      setMessage("Şifreler aynı olmalı!");
+      setMessage(
+        language === "tr" ? "Şifreler aynı olmalı!" : "Passwords must match!"
+      );
       return;
     }
+
     try {
       await api.put("/users/change_password", {
         password: passwords.current,
         new_password: passwords.new,
       });
-      setMessage("Şifre başarıyla değişti!");
+      setMessage(
+        language === "tr"
+          ? "Şifre başarıyla değişti!"
+          : "Password successfully changed!"
+      );
       setPasswords({ current: "", new: "", confirm: "" });
     } catch {
-      setMessage("Şifre değiştirilemedi.");
+      setMessage(
+        language === "tr"
+          ? "Şifre değiştirilemedi."
+          : "Failed to update password."
+      );
     }
+  };
+
+  const LABELS = {
+    title: language === "tr" ? "Şifre Değiştir" : "Change Password",
+    current: language === "tr" ? "Mevcut Şifre" : "Current Password",
+    new: language === "tr" ? "Yeni Şifre" : "New Password",
+    confirm: language === "tr" ? "Yeni Şifre (Tekrar)" : "Confirm Password",
+    button: language === "tr" ? "Şifreyi Güncelle" : "Update Password",
   };
 
   return (
@@ -39,11 +62,12 @@ export default function PasswordSettings() {
           letterSpacing: ".4px",
         }}
       >
-        Şifre Değiştir
+        {LABELS.title}
       </h2>
+
       <input
         type="password"
-        placeholder="Mevcut Şifre"
+        placeholder={LABELS.current}
         value={passwords.current}
         onChange={(e) =>
           setPasswords({ ...passwords, current: e.target.value })
@@ -53,7 +77,7 @@ export default function PasswordSettings() {
       />
       <input
         type="password"
-        placeholder="Yeni Şifre"
+        placeholder={LABELS.new}
         value={passwords.new}
         onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
         style={inputStyle}
@@ -61,7 +85,7 @@ export default function PasswordSettings() {
       />
       <input
         type="password"
-        placeholder="Yeni Şifre (Tekrar)"
+        placeholder={LABELS.confirm}
         value={passwords.confirm}
         onChange={(e) =>
           setPasswords({ ...passwords, confirm: e.target.value })
@@ -69,6 +93,7 @@ export default function PasswordSettings() {
         style={inputStyle}
         autoComplete="new-password"
       />
+
       <button
         type="submit"
         style={{
@@ -85,15 +110,17 @@ export default function PasswordSettings() {
           cursor: "pointer",
         }}
       >
-        Şifreyi Güncelle
+        {LABELS.button}
       </button>
+
       {message && (
         <div
           style={{
             marginTop: 14,
-            color: message.includes("başarıyla")
-              ? "var(--accent-color)"
-              : "#ea2e49",
+            color:
+              message.includes("başarı") || message.includes("success")
+                ? "var(--accent-color)"
+                : "#ea2e49",
             textAlign: "center",
             fontWeight: 600,
             fontSize: 15,

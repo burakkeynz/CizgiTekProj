@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FiSearch, FiUpload, FiX, FiFile, FiEye } from "react-icons/fi";
 import { useLocation } from "react-router-dom";
+import { useLanguage } from "./LanguageContext";
 import api from "../api";
 import { useTheme } from "./ThemeContext";
 import FilePreviewModal from "./FilePreviewModal";
 import { MessageList } from "@chatscope/chat-ui-kit-react";
 
 const SESSION_KEY = "ai_assistang_logs:";
-const INITIAL_MSG = [{ role: "model", text: "Hi! How can I help you?" }];
 
 function DotLoader() {
   return (
@@ -56,7 +56,15 @@ function getS3KeyFromUrl(url) {
 function Assistant({ onNewLog }) {
   const location = useLocation();
   const { theme } = useTheme();
-
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+  const initialMessage = {
+    role: "model",
+    text: t(
+      "Hi! How can I help you?",
+      "Merhaba! Size nasıl yardımcı olabilirim?"
+    ),
+  };
   const [isOpen, setIsOpen] = useState(() => {
     try {
       const saved = sessionStorage.getItem("ai_assistant_open");
@@ -65,12 +73,13 @@ function Assistant({ onNewLog }) {
       return true;
     }
   });
+
   const [messages, setMessages] = useState(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
-      return saved ? JSON.parse(saved) : INITIAL_MSG;
+      return saved ? JSON.parse(saved) : [initialMessage];
     } catch {
-      return INITIAL_MSG;
+      return [initialMessage];
     }
   });
   const [preview, setPreview] = useState(null);
@@ -80,6 +89,34 @@ function Assistant({ onNewLog }) {
     setIsOpen(false);
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
   }, [location]);
+  useEffect(() => {
+    const en = "Hi! How can I help you?";
+    const tr = "Merhaba! Size nasıl yardımcı olabilirim?";
+    const translated = language === "tr" ? tr : en;
+
+    setMessages((prevMessages) => {
+      if (prevMessages.length === 0) return prevMessages;
+
+      const firstMsg = prevMessages[0];
+      if (firstMsg.role !== "model") return prevMessages;
+
+      // Eğer ilk mesaj zaten doğruysa değişiklik yapma
+      if (firstMsg.text === translated) return prevMessages;
+
+      // İlk mesajı değiştir, diğerlerine dokunma
+      const updatedMessages = [
+        { ...firstMsg, text: translated },
+        ...prevMessages.slice(1),
+      ];
+
+      // Session storage'ı da güncelle
+      try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(updatedMessages));
+      } catch {}
+
+      return updatedMessages;
+    });
+  }, [language]);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -134,9 +171,15 @@ function Assistant({ onNewLog }) {
         });
       }
     } catch (e) {
-      console.error("Chat log veritabana kaydedilemedi:", e);
+      console.error(
+        t(
+          "Chat log could not be saved to the database.",
+          "Sohbet geçmişi veritabana kaydedilemedi:"
+        ),
+        e
+      );
     }
-    setMessages(INITIAL_MSG);
+    setMessages([initialMessage]);
     sessionStorage.removeItem(SESSION_KEY);
     setIsOpen(false);
   };
@@ -159,7 +202,12 @@ function Assistant({ onNewLog }) {
         uploadedFiles = await Promise.all(fileUploadPromises);
       } catch (err) {
         setLoading(false);
-        alert("Dosya yüklenirken hata oluştu!");
+        alert(
+          t(
+            "An error occurred while uploading the file!",
+            "Dosya yüklenirken hata oluştu!"
+          )
+        );
         return;
       }
     }
@@ -221,7 +269,13 @@ function Assistant({ onNewLog }) {
         const msgsWithoutLoader = msgs.filter((msg) => !msg.isLoader);
         return [
           ...msgsWithoutLoader,
-          { role: "model", text: "Bir hata oluştu, lütfen tekrar deneyin." },
+          {
+            role: "model",
+            text: t(
+              "Something went wrong. Please try again.",
+              "Bir hata oluştu, lütfen tekrar deneyin."
+            ),
+          },
         ];
       });
     } finally {
@@ -246,7 +300,12 @@ function Assistant({ onNewLog }) {
       const res = await api.get(`/files/presign`, { params: { key } });
       fileUrl = res.data.url;
     } catch (err) {
-      alert("Dosya önizleme linki alınamadı.");
+      alert(
+        t(
+          "Failed to generate file preview link.",
+          "Dosya önizleme linki alınamadı."
+        )
+      );
       setPreviewLoading(false);
       return;
     }
@@ -277,7 +336,7 @@ function Assistant({ onNewLog }) {
           transition: "background 0.13s",
         }}
         onClick={() => setIsOpen(true)}
-        title="AI Asistan'ı aç"
+        title={t("Open AI Assistant", "AI Asistan'ı aç")}
       >
         💬
       </div>
@@ -289,8 +348,8 @@ function Assistant({ onNewLog }) {
       if (msg.files && msg.files.length > 0) {
         const label =
           msg.files.length > 1
-            ? "Examining the files..."
-            : "Examining the file...";
+            ? t("Examining the files...", "Dosyalar inceleniyor...")
+            : t("Examining the file...", "Dosya inceleniyor...");
         return (
           <span
             style={{
@@ -313,7 +372,7 @@ function Assistant({ onNewLog }) {
               fontWeight: 500,
             }}
           >
-            Searching Web...
+            {t("Searching web...", "Web'de araştırılıyor...")}
           </span>
         );
       return <DotLoader />;
@@ -351,7 +410,7 @@ function Assistant({ onNewLog }) {
           transition: "background 0.2s",
         }}
       >
-        AI-Assistant
+        {t("AI-Assistant", "AI-Asistan")}
         <span
           style={{
             position: "absolute",
@@ -428,7 +487,7 @@ function Assistant({ onNewLog }) {
                             border: "1.2px solid #fff2",
                             minWidth: 130,
                           }}
-                          title="Dosyayı önizle"
+                          title={t("Preview file", "Dosyayı önizle")}
                         >
                           <FiFile style={{ marginRight: 3, opacity: 0.95 }} />
                           <span
@@ -450,7 +509,8 @@ function Assistant({ onNewLog }) {
                               alignItems: "center",
                             }}
                           >
-                            <FiEye size={13} style={{ marginRight: 2 }} /> Aç
+                            <FiEye size={13} style={{ marginRight: 2 }} />{" "}
+                            {t("Open", "Aç")}
                           </span>
                         </div>
                       ))}
@@ -540,7 +600,7 @@ function Assistant({ onNewLog }) {
               transition: "background 0.18s, color 0.18s",
             }}
           >
-            <FiSearch /> Web Search
+            <FiSearch /> {t("Web Search", "Web'de Ara")}
           </button>
 
           <label
@@ -566,7 +626,7 @@ function Assistant({ onNewLog }) {
               position: "relative",
             }}
           >
-            <FiUpload /> Add photos & files
+            <FiUpload /> {t("Add photos & files", "Fotoğraf & dosya ekle")}
             <input
               id="file-upload"
               type="file"
@@ -584,7 +644,12 @@ function Assistant({ onNewLog }) {
                       )
                   );
                   if (unique.length > 5)
-                    alert("En fazla 5 dosya seçebilirsiniz!");
+                    alert(
+                      t(
+                        "You can select up to 5 files only!",
+                        "En fazla 5 dosya seçebilirsiniz!"
+                      )
+                    );
                   return unique.slice(0, 5);
                 });
                 setActiveTool("upload");
@@ -636,7 +701,7 @@ function Assistant({ onNewLog }) {
                   onClick={() =>
                     setSelectedFiles(selectedFiles.filter((_, i) => i !== idx))
                   }
-                  title="Dosyayı kaldır"
+                  title={t("Remove file", "Dosyayı kaldır")}
                 >
                   <FiX />
                 </span>
@@ -650,7 +715,7 @@ function Assistant({ onNewLog }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleInputKeyDown}
           disabled={loading}
-          placeholder="Ask Assistant..."
+          placeholder={t("Ask Assistant...", "Asistana sor...")}
           rows={2}
           style={{
             width: "100%",
@@ -690,7 +755,7 @@ function Assistant({ onNewLog }) {
               transition: "background 0.18s",
             }}
           >
-            Send
+            {t("Send", "Gönder")}
           </button>
           <button
             onClick={handleEndDiscussion}
@@ -707,7 +772,7 @@ function Assistant({ onNewLog }) {
               transition: "background 0.18s, color 0.18s",
             }}
           >
-            End Discussion
+            {t("End Discussion", "Sohbeti Bitir")}
           </button>
         </div>
       </div>

@@ -1,7 +1,11 @@
 import React from "react";
 import logo from "../assets/logo.png";
+import { useLanguage } from "./LanguageContext";
 
 function Dashboard() {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
   return (
     <div
       style={{
@@ -25,7 +29,7 @@ function Dashboard() {
           marginBottom: 16,
         }}
       >
-        Welcome!
+        {t("Welcome!", "Hoş Geldiniz!")}
       </h1>
       <img
         src={logo}
@@ -49,12 +53,12 @@ function Dashboard() {
           maxWidth: 400,
         }}
       >
-        Hospital Panel System
+        {t("Hospital Panel System", "Hastane Panel Sistemi")}
         <br />
         <span
           style={{ fontWeight: 400, fontSize: 17, color: "var(--text-muted)" }}
         >
-          Easily meet, consult and access
+          {t("Easily meet, consult and access", "Kolayca görüş, danış ve eriş")}
         </span>
       </div>
     </div>

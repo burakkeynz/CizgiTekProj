@@ -95,7 +95,7 @@ export default function AppearanceSettings() {
       </div>
       <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
         {language === "tr"
-          ? "Varsayılan olarak uygulama açık temayı ve İngilizce dili kullanır."
+          ? "Varsayılan olarak uygulama açık temayı ve İngilizce dilini kullanır."
           : "By default, app uses light theme and English language."}
       </div>
     </div>

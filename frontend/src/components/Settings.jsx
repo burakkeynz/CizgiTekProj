@@ -2,15 +2,32 @@ import React, { useState } from "react";
 import ProfileSettings from "./ProfileSettings";
 import PasswordSettings from "./PasswordSettings";
 import AppearanceSettings from "./AppearanceSettings";
-
-const SETTINGS_TABS = [
-  { key: "profile", label: "Profile" },
-  { key: "password", label: "Change Password" },
-  { key: "appearance", label: "Appearance" },
-];
+import { useLanguage } from "./LanguageContext";
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
+  const { language } = useLanguage();
+
+  const LABELS = {
+    profile: {
+      en: "Profile",
+      tr: "Profil",
+    },
+    password: {
+      en: "Change Password",
+      tr: "Şifre Değiştir",
+    },
+    appearance: {
+      en: "Appearance",
+      tr: "Görünüm",
+    },
+  };
+
+  const SETTINGS_TABS = [
+    { key: "profile" },
+    { key: "password" },
+    { key: "appearance" },
+  ];
 
   return (
     <div
@@ -50,6 +67,8 @@ export default function Settings() {
         >
           {SETTINGS_TABS.map((tab) => {
             const isActive = activeTab === tab.key;
+            const label = LABELS[tab.key][language] || tab.key;
+
             return (
               <div
                 key={tab.key}
@@ -77,7 +96,7 @@ export default function Settings() {
                     e.currentTarget.style.background = "transparent";
                 }}
               >
-                {tab.label}
+                {label}
               </div>
             );
           })}
@@ -86,7 +105,7 @@ export default function Settings() {
         <div
           style={{
             flex: 1,
-            padding: "48px 48px",
+            padding: "48px",
             background: "var(--card-bg)",
             display: "flex",
             flexDirection: "column",

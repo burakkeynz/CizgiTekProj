@@ -1,5 +1,8 @@
 import React from "react";
+import { useLanguage } from "./LanguageContext";
 function Main() {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
   return (
     <div
       style={{
@@ -11,7 +14,7 @@ function Main() {
       }}
     >
       <div style={{ fontSize: 34, fontWeight: 600, color: "#9aa4b1" }}>
-        Will be coded
+        {t("Will be coded...", "Kodlanacak...")}
       </div>
     </div>
   );

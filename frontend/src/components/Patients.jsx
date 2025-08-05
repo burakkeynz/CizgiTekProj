@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
+import { useLanguage } from "./LanguageContext";
 
 export default function Patients() {
   const [patients, setPatients] = useState([]);
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
 
   useEffect(() => {
     api
@@ -30,7 +33,7 @@ export default function Patients() {
           letterSpacing: ".5px",
         }}
       >
-        Patients List
+        {t("Patients List", "Hasta Listesi")}
       </h2>
 
       <div
@@ -57,11 +60,11 @@ export default function Patients() {
                 transition: "background 0.2s, color 0.2s",
               }}
             >
-              <th style={thStyle}>Name-Surname</th>
+              <th style={thStyle}>{t("Name-Surname", "Ad-Soyad")}</th>
               <th style={thStyle}>TC</th>
-              <th style={thStyle}>Age</th>
-              <th style={thStyle}>Gender</th>
-              <th style={thStyle}>Diagnosis</th>
+              <th style={thStyle}>{t("Age", "Yaş")}</th>
+              <th style={thStyle}>{t("Gender", "Cinsiyet")}</th>
+              <th style={thStyle}>{t("Diagnosis", "Tanı")}</th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +107,10 @@ export default function Patients() {
                     color: "var(--text-muted)",
                   }}
                 >
-                  Kayıtlı hasta bulunamadı.
+                  {t(
+                    "No registered patient found.",
+                    "Kayıtlı hasta bulunamadı."
+                  )}
                 </td>
               </tr>
             )}

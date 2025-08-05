@@ -4,23 +4,23 @@ import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
 import { useSelector, useDispatch } from "react-redux";
 import { setMessages, addMessage, setConversations } from "../store/chatSlice";
 import { startCall } from "../store/callSlice";
-
+import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
-// Aramadaki kişinin status ve labelı dinamik gösteren fonksiyon
-function getStatusText(status, inCall) {
-  if (inCall) return "Aramada";
+// Status metni
+function getStatusText(status, inCall, t) {
+  if (inCall) return t("In Call", "Aramada");
   switch (status) {
     case "online":
-      return "Online";
+      return t("Online", "Çevrimiçi");
     case "offline":
-      return "Offline";
+      return t("Offline", "Çevrimdışı");
     case "busy":
-      return "Busy";
+      return t("Busy", "Meşgul");
     case "in_call":
-      return "In Call";
+      return t("In Call", "Aramada");
     default:
-      return "Unknown";
+      return t("Unknown", "Bilinmiyor");
   }
 }
 function getStatusColor(status, inCall) {
@@ -93,6 +93,9 @@ function UserAvatar({ user }) {
 export default function ChatDetail() {
   const { currentUser, socket, conversations } = useOutletContext();
   const isDark = document.body.getAttribute("data-theme") === "dark";
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -108,8 +111,8 @@ export default function ChatDetail() {
   const messageEndRef = useRef(null);
   const fileInputRef = useRef();
   const [newMessage, setNewMessage] = useState("");
-
   const [headerVisible, setHeaderVisible] = useState(!inCall);
+
   useEffect(() => {
     if (!inCall) {
       const timeout = setTimeout(() => setHeaderVisible(true), 800);
@@ -119,12 +122,10 @@ export default function ChatDetail() {
     }
   }, [inCall]);
 
-  // aktif sohbet var mı araması
   const selectedChat = conversations?.find(
     (c) => String(c.conversation_id) === String(conversationId)
   );
 
-  // Eğer chat yoksa
   useEffect(() => {
     if (!selectedChat && conversationId) {
       api.get("/conversations/my").then((res) => {
@@ -133,7 +134,6 @@ export default function ChatDetail() {
     }
   }, [selectedChat, conversationId, dispatch]);
 
-  // bağlantı veya sohbet olmadıgında guard clause
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId) {
       navigate("/chat", { replace: true });
@@ -148,7 +148,6 @@ export default function ChatDetail() {
     return () => socket.off("disconnect", onDisconnect);
   }, [currentUser, conversationId, socket, navigate]);
 
-  // mesaj fetch
   useEffect(() => {
     if (!selectedChat) return;
     const fetchMessages = async () => {
@@ -163,9 +162,15 @@ export default function ChatDetail() {
     fetchMessages();
   }, [conversationId, selectedChat, currentUser?.id, dispatch]);
 
-  // socket events typings vs
+  const [typingVisible, setTypingVisible] = useState(false);
+  const typingTimeout = useRef(null);
+  const lastTypingAt = useRef(0);
+  const TYPING_EMIT_INTERVAL = 1000;
+  const lastEmitTimeRef = useRef(0);
+
   useEffect(() => {
     if (!socket || !currentUser?.id || !selectedChat) return;
+
     const handleReceiveMessage = (data) => {
       if (
         String(data.conversation_id) === String(selectedChat.conversation_id)
@@ -213,12 +218,6 @@ export default function ChatDetail() {
     };
   }, [socket, currentUser?.id, selectedChat, dispatch]);
 
-  const [typingVisible, setTypingVisible] = useState(false);
-  const typingTimeout = useRef(null);
-  const lastTypingAt = useRef(0);
-  const TYPING_EMIT_INTERVAL = 1000;
-  const lastEmitTimeRef = useRef(0);
-
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
     if (socket && selectedChat) {
@@ -238,7 +237,16 @@ export default function ChatDetail() {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingVisible]);
 
-  // Arama başlatıcılar
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedChat) return;
+    setNewMessage("");
+    try {
+      await api.post(`/conversations/${String(conversationId)}/messages`, {
+        content: newMessage.trim(),
+      });
+    } catch (err) {}
+  };
+
   function handleAudioCall() {
     if (!selectedChat) return;
     dispatch(startCall({ type: "audio", peerUser: selectedChat.user }));
@@ -254,22 +262,12 @@ export default function ChatDetail() {
     const file = e.target.files[0];
     if (!file) return;
     alert(`Dosya seçildi: ${file.name}`);
-    // Upload API vs buraya
   }
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedChat) return;
-    setNewMessage("");
-    try {
-      await api.post(`/conversations/${String(conversationId)}/messages`, {
-        content: newMessage.trim(),
-      });
-    } catch (err) {}
-  };
 
   if (!selectedChat) {
     return (
       <div style={{ padding: 40, color: "#aaa", textAlign: "center" }}>
-        <DotLoader /> Sohbet yükleniyor...
+        <DotLoader /> {t("Loading chat...", "Sohbet yükleniyor...")}
       </div>
     );
   }
@@ -310,7 +308,7 @@ export default function ChatDetail() {
         overflow: "hidden",
       }}
     >
-      {/* chat alanI */}
+      {/* chat */}
       <div
         style={{
           flex: 1,
@@ -318,10 +316,8 @@ export default function ChatDetail() {
           flexDirection: "column",
           minHeight: 0,
           paddingTop: inCall ? 18 : 0,
-          transition: "padding-top .22s",
         }}
       >
-        {/* header */}
         {headerVisible && (
           <div
             style={{
@@ -341,7 +337,7 @@ export default function ChatDetail() {
                 <div style={{ fontWeight: "600", fontSize: 16 }}>
                   {selectedChat.user.first_name ||
                     selectedChat.user.name ||
-                    "Kullanıcı"}
+                    t("User", "Kullanıcı")}
                 </div>
                 <div
                   style={{
@@ -364,7 +360,7 @@ export default function ChatDetail() {
                     }}
                   />
                   <span style={{ color: "#888" }}>
-                    {getStatusText(selectedChat.user.status, showCallStatus)}
+                    {getStatusText(selectedChat.user.status, showCallStatus, t)}
                   </span>
                 </div>
               </div>
@@ -372,14 +368,14 @@ export default function ChatDetail() {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
                 style={iconBtnStyle}
-                title="Sesli Arama"
+                title={t("Audio Call", "Sesli Arama")}
                 onClick={handleAudioCall}
               >
                 <FiPhone size={22} />
               </button>
               <button
                 style={iconBtnStyle}
-                title="Görüntülü Arama"
+                title={t("Video Call", "Görüntülü Arama")}
                 onClick={handleVideoCall}
               >
                 <FiVideo size={22} />
@@ -388,20 +384,6 @@ export default function ChatDetail() {
           </div>
         )}
 
-        {/* ActiveCall ile chat mesajları arasına çizgi */}
-        {inCall && (
-          <div
-            style={{
-              width: "100%",
-              height: 2,
-              background: "linear-gradient(90deg, #4c5670 30%, #222a38 80%)",
-              marginBottom: 6,
-              opacity: 0.82,
-            }}
-          />
-        )}
-
-        {/* mesajlar */}
         <div
           style={{
             flex: 1,
@@ -433,7 +415,6 @@ export default function ChatDetail() {
                 marginLeft: msg.from_me ? "40%" : 0,
                 marginRight: msg.from_me ? 0 : "40%",
                 boxShadow: "0 1px 6px #0001",
-                position: "relative",
               }}
             >
               {msg.content}
@@ -469,7 +450,7 @@ export default function ChatDetail() {
           )}
           <div ref={messageEndRef} />
         </div>
-        {/* input */}
+
         <div
           style={{
             display: "flex",
@@ -480,7 +461,6 @@ export default function ChatDetail() {
             gap: 8,
           }}
         >
-          {/* Ataç ikonu */}
           <button
             style={{
               background: "none",
@@ -495,7 +475,7 @@ export default function ChatDetail() {
               alignItems: "center",
               justifyContent: "center",
             }}
-            title="Dosya Gönder"
+            title={t("Send File", "Dosya Gönder")}
             onClick={handleFileClick}
           >
             <FiPaperclip size={22} />
@@ -522,7 +502,7 @@ export default function ChatDetail() {
             }}
             value={newMessage}
             onChange={handleInputChange}
-            placeholder="Type something..."
+            placeholder={t("Type something...", "Bir şeyler yaz...")}
             onKeyUp={(e) => {
               if (e.key === "Enter") sendMessage();
             }}
@@ -545,7 +525,7 @@ export default function ChatDetail() {
             onClick={sendMessage}
             disabled={!newMessage.trim()}
           >
-            Send
+            {t("Send", "Gönder")}
           </button>
         </div>
       </div>

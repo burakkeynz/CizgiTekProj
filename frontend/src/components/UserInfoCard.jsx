@@ -1,18 +1,23 @@
 import { useEffect, useState } from "react";
 import api from "../api";
+import { useLanguage } from "./LanguageContext";
 
 function UserInfoCard({ user, setUser, expiresIn }) {
+  const { language } = useLanguage();
   const [timeLeft, setTimeLeft] = useState(expiresIn);
 
   useEffect(() => {
     setTimeLeft(expiresIn);
     if (!expiresIn || expiresIn <= 0) return;
+
     const timeout = setTimeout(() => {
       window.location.href = "/session-expired";
     }, expiresIn * 1000);
+
     const interval = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
+
     return () => {
       clearTimeout(timeout);
       clearInterval(interval);
@@ -22,6 +27,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
   const handleStatusChange = async (e) => {
     const selected = e.target.value;
     setUser((prev) => ({ ...prev, status: selected })); // Optimistic UI
+
     const socket = window.socket;
     if (socket && user?.id) {
       socket.emit("user_status", {
@@ -29,6 +35,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
         status: selected,
       });
     }
+
     try {
       await api.put("/users/update-status", { status: selected });
     } catch (err) {
@@ -49,6 +56,15 @@ function UserInfoCard({ user, setUser, expiresIn }) {
   const fullName = `${user.role} ${user.first_name} ${user.last_name}`;
   const isInCall = user.status === "in_call" || user.status === "oncall";
 
+  const STATUS_LABELS = {
+    online: { tr: "🟢 Çevrimiçi", en: "🟢 Online" },
+    busy: { tr: "🟠 Meşgul", en: "🟠 Busy" },
+    in_call: { tr: "🔴 Aramada", en: "🔴 In Call" },
+    offline: { tr: "⚪ Çevrimdışı", en: "⚪ Offline" },
+  };
+
+  const timerLabel = language === "tr" ? "Kalan süre" : "Time left";
+
   return (
     <div
       style={{
@@ -61,7 +77,6 @@ function UserInfoCard({ user, setUser, expiresIn }) {
         transition: "background 0.2s, color 0.2s",
       }}
     >
-      {/* Avatar */}
       <div
         style={{
           width: 70,
@@ -80,16 +95,19 @@ function UserInfoCard({ user, setUser, expiresIn }) {
       >
         {user.first_name?.[0]?.toUpperCase() || "U"}
       </div>
+
       <div
         style={{
           fontWeight: 600,
           fontSize: 18,
           marginBottom: 3,
           color: "var(--text-main)",
+          textAlign: "center",
         }}
       >
         {fullName}
       </div>
+
       <select
         value={user.status}
         onChange={handleStatusChange}
@@ -105,15 +123,16 @@ function UserInfoCard({ user, setUser, expiresIn }) {
         }}
         disabled={isInCall}
       >
-        <option value="online">🟢 Online</option>
-        <option value="busy">🟠 Busy</option>
+        <option value="online">{STATUS_LABELS.online[language]}</option>
+        <option value="busy">{STATUS_LABELS.busy[language]}</option>
         <option value="in_call" disabled>
-          🔴 In Call
+          {STATUS_LABELS.in_call[language]}
         </option>
         <option value="offline" disabled>
-          ⚪ Offline
+          {STATUS_LABELS.offline[language]}
         </option>
       </select>
+
       <div
         style={{
           background: "var(--input-bg)",
@@ -125,7 +144,7 @@ function UserInfoCard({ user, setUser, expiresIn }) {
           boxShadow: "0 1px 4px #c7d1e625",
         }}
       >
-        {formatTime(timeLeft)}
+        {timerLabel}: {formatTime(timeLeft)}
       </div>
     </div>
   );

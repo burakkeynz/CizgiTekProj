@@ -1,9 +1,13 @@
 import React from "react";
 import { useTheme } from "./ThemeContext";
+import { useLanguage } from "./LanguageContext";
 
 function Goodbye() {
   const { theme } = useTheme();
+  const { language } = useLanguage();
   const isDark = theme === "dark";
+
+  const t = (en, tr) => (language === "tr" ? tr : en);
 
   return (
     <div
@@ -49,9 +53,11 @@ function Goodbye() {
             marginBottom: 14,
           }}
         >
-          GoodBye!
+          {t("Goodbye!", "Hoşçakalın!")}
         </div>
-        <div style={{ marginBottom: 20 }}>Başarıyla çıkış yaptınız.</div>
+        <div style={{ marginBottom: 20 }}>
+          {t("You have successfully logged out.", "Başarıyla çıkış yaptınız.")}
+        </div>
         <a
           href="/login"
           style={{
@@ -65,7 +71,7 @@ function Goodbye() {
             boxShadow: isDark ? "0 2px 8px #0066ff55" : "0 2px 8px #bfdcff33",
           }}
         >
-          Login
+          {t("Login", "Giriş Yap")}
         </a>
       </div>
     </div>

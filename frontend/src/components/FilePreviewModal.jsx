@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLanguage } from "./LanguageContext";
 import { Document, Page, pdfjs } from "react-pdf";
 import * as XLSX from "xlsx";
 
@@ -23,6 +24,8 @@ export default function FilePreviewModal({
   const [excelData, setExcelData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
 
   useEffect(() => {
     if (!fileKey) return;
@@ -35,14 +38,19 @@ export default function FilePreviewModal({
       credentials: "include",
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Dosya linki alınamadı");
+        if (!res.ok)
+          throw new Error(
+            t("Failed to fetch file link", "Dosya linki alınamadı")
+          );
         return res.json();
       })
       .then((data) => {
         setFileUrl(data.url);
       })
       .catch((err) => {
-        setFetchError("Dosya önizlemede hata: " + err.message);
+        setFetchError(
+          t("Error previewing file: ", "Dosya önizlemede hata: ") + err.message
+        );
       })
       .finally(() => setLoading(false));
   }, [fileKey]);
@@ -122,7 +130,9 @@ export default function FilePreviewModal({
         )}
 
         {loading && (
-          <div style={{ color: "#888", margin: "18px 0" }}>Yükleniyor...</div>
+          <div style={{ color: "#888", margin: "18px 0" }}>
+            {t("Loading...", "Yükleniyor...")}
+          </div>
         )}
 
         {!loading && fileUrl && (
@@ -196,7 +206,10 @@ export default function FilePreviewModal({
               fileType !== "text/plain" &&
               !fileName?.endsWith(".csv") && (
                 <div style={{ color: "#a00", marginTop: 12 }}>
-                  Bu dosya tipi için önizleme desteklenmiyor.
+                  {t(
+                    "Preview not supported for this file type.",
+                    "Bu dosya tipi için önizleme desteklenmiyor."
+                  )}
                 </div>
               )}
           </>

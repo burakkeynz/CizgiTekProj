@@ -1,17 +1,47 @@
 import React, { useEffect, useState } from "react";
 import api from "../api";
+import { useLanguage } from "./LanguageContext";
 
 export default function ProfileSettings() {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    api.get("/auth/me").then((res) => setUser(res.data));
+    api
+      .get("/auth/me")
+      .then((res) => setUser(res.data))
+      .catch(() => setUser(null));
   }, []);
 
-  if (!user) return <div>Loading...</div>;
+  if (!user) {
+    return (
+      <div
+        style={{
+          color: "var(--text-muted)",
+          fontSize: 16,
+          textAlign: "center",
+          padding: "40px 0",
+        }}
+      >
+        {t("Loading user information...", "Kullanıcı bilgileri yükleniyor...")}
+      </div>
+    );
+  }
 
   return (
-    <div>
+    <div
+      style={{
+        padding: 24,
+        background: "var(--bg-main)",
+        borderRadius: 16,
+        boxShadow: "0 4px 12px #0001",
+        maxWidth: 480,
+        marginTop: 40,
+        marginLeft: "min(40px, 5vw)",
+      }}
+    >
       <h2
         style={{
           color: "var(--accent-color)",
@@ -21,23 +51,26 @@ export default function ProfileSettings() {
           letterSpacing: ".4px",
         }}
       >
-        Profile
+        {t("Profile Information", "Profil Bilgileri")}
       </h2>
+
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Username</label>
-        <input value={user.username} disabled style={inputStyle} />
+        <label style={labelStyle}>{t("Username", "Kullanıcı Adı")}</label>
+        <input value={user.username || ""} disabled style={inputStyle} />
       </div>
+
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Name</label>
+        <label style={labelStyle}>{t("Full Name", "Ad Soyad")}</label>
         <input
-          value={user.first_name + " " + user.last_name}
+          value={(user.first_name || "") + " " + (user.last_name || "")}
           disabled
           style={inputStyle}
         />
       </div>
+
       <div style={{ marginBottom: 20 }}>
-        <label style={labelStyle}>Role</label>
-        <input value={user.role} disabled style={inputStyle} />
+        <label style={labelStyle}>{t("Role", "Rol")}</label>
+        <input value={user.role || ""} disabled style={inputStyle} />
       </div>
 
       {user.role === "doctor" && (
@@ -48,12 +81,18 @@ export default function ProfileSettings() {
             fontWeight: 500,
           }}
         >
-          Doktorlar için ekstra ayar: <b>Poliklinik Seçimi</b>
+          {t("Extra setting for doctors:", "Doktorlar için ekstra ayar:")}{" "}
+          <b>{t("Polyclinic Selection", "Poliklinik Seçimi")}</b>
         </div>
       )}
+
       {user.role === "technician" && (
         <div style={{ color: "#17a2b8", marginTop: 18, fontWeight: 500 }}>
-          Teknisyenler için ekstra ayar: <b>Departman Seçimi</b>
+          {t(
+            "Extra setting for technicians:",
+            "Teknisyenler için ekstra ayar:"
+          )}{" "}
+          <b>{t("Department Selection", "Departman Seçimi")}</b>
         </div>
       )}
     </div>

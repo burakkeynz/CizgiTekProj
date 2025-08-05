@@ -2,12 +2,15 @@ import React, { useRef, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FiArrowLeft, FiFile, FiEye } from "react-icons/fi";
 import FilePreviewModal from "./FilePreviewModal";
+import { useLanguage } from "./LanguageContext";
 
 function ChatLogDetail({ logs, currentUser }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const messagesRef = useRef(null);
   const [preview, setPreview] = useState(null); // {fileType, fileUrl, fileName}
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
 
   useEffect(() => {
     if (messagesRef.current) {
@@ -118,10 +121,10 @@ function ChatLogDetail({ logs, currentUser }) {
           }}
         >
           <FiArrowLeft size={20} />
-          Tüm Loglara Dön
+          {t("Back to Logs", "Tüm Loglara Dön")}
         </button>
         <div style={{ marginTop: 40, color: "var(--text-muted)" }}>
-          Log bulunamadı.
+          {t("Log not found.", "Log bulunamadı.")}
         </div>
       </div>
     );
@@ -191,7 +194,7 @@ function ChatLogDetail({ logs, currentUser }) {
             alignSelf: "flex-start",
           }}
         >
-          Chat Details
+          {t("Chat Details", "Sohbet Detayları")}
         </h2>
         <div
           style={{
@@ -282,7 +285,7 @@ function ChatLogDetail({ logs, currentUser }) {
                                 color: "#3a66e2",
                                 fontWeight: 600,
                               }}
-                              title="Dosyayı önizle"
+                              title={t("Preview file", "Dosyayı önizle")}
                               onClick={() =>
                                 setPreview({
                                   fileType: file.type,
@@ -312,9 +315,9 @@ function ChatLogDetail({ logs, currentUser }) {
                                 fontSize: 12,
                                 fontWeight: 400,
                               }}
-                              title="İndir"
+                              title={t("Download", "İndir")}
                             >
-                              İndir
+                              {t("Download", "İndir")}
                             </a>
                           </div>
                         ))}
@@ -328,7 +331,7 @@ function ChatLogDetail({ logs, currentUser }) {
           <div
             style={{ marginTop: 18, color: "var(--text-muted)", fontSize: 13 }}
           >
-            Oluşturulma:{" "}
+            {t("Created At:", "Oluşturulma:")}
             {log.created_at
               ? new Date(log.created_at).toLocaleString("tr-TR")
               : "-"}

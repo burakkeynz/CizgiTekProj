@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useLanguage } from "./LanguageContext";
 
 function getFirstQuestionAnswer(messages) {
   let arr = messages;
@@ -53,7 +54,8 @@ function formatDate(dateStr) {
 
 function Logs({ logs, onDelete }) {
   const navigate = useNavigate();
-
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
   return (
     <>
       <style>
@@ -143,13 +145,13 @@ function Logs({ logs, onDelete }) {
             marginBottom: 18,
           }}
         >
-          Chat Logs
+          {t("Chat Logs", "Sohbet Kayıtları")}
         </h2>
         {logs.length === 0 && (
           <div
             style={{ color: "var(--text-muted)", fontSize: 17, marginTop: 30 }}
           >
-            Hiç log yok.
+            {t("No logs available.", "Hiç log yok.")}
           </div>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -192,7 +194,7 @@ function Logs({ logs, onDelete }) {
                         color: "var(--text-label)",
                       }}
                     >
-                      {firstQ?.substring(0, 32) || "Soru yok"}
+                      {firstQ?.substring(0, 32) || t("No question", "Soru yok")}
                       {firstQ.length > 32 ? "..." : ""}
                     </span>
                   </span>
@@ -223,17 +225,17 @@ function Logs({ logs, onDelete }) {
                       padding: "0 8px",
                       fontWeight: 700,
                     }}
-                    title="Kaydı sil"
+                    title={t("Delete record", "Kaydı sil")}
                   >
                     ×
                   </button>
                 </div>
                 <div style={{ marginTop: 12 }}>
-                  <span className="log-q-label">Soru:</span>
+                  <span className="log-q-label">{t("Question:", "Soru:")}</span>
                   <span className="log-q-text">{firstQ}</span>
                 </div>
                 <div style={{ marginTop: 8 }}>
-                  <span className="log-a-label">Cevap:</span>
+                  <span className="log-a-label">{t("Answer:", "Cevap:")}</span>
                   <span className="log-a-text">{firstA}</span>
                 </div>
                 {hasMore && <div className="log-more">...</div>}

@@ -4,12 +4,256 @@ import { useTheme } from "./ThemeContext";
 import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
-const roleOptions = [
-  { value: "Doctor", label: "Doctor" },
-  { value: "Nurse", label: "Nurse" },
-  { value: "Technician", label: "Technician" },
-];
+export default function Register() {
+  const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+  const { language, setLanguage } = useLanguage();
+  const isDark = theme === "dark";
+  const t = (en, tr) => (language === "tr" ? tr : en);
 
+  const [form, setForm] = useState({
+    username: "",
+    email: "",
+    first_name: "",
+    last_name: "",
+    password: "",
+    role: "",
+  });
+
+  useEffect(() => {
+    const pendingTheme = localStorage.getItem("pending_theme");
+    if (pendingTheme) setTheme(pendingTheme);
+    const pendingLanguage = localStorage.getItem("pending_language");
+    if (pendingLanguage) setLanguage(pendingLanguage);
+  }, [setTheme, setLanguage]);
+
+  const inputStyle = {
+    width: "100%",
+    padding: "12px 16px",
+    marginBottom: "15px",
+    borderRadius: "6px",
+    border: `1px solid ${isDark ? "#23272f" : "var(--accent-color)"}`,
+    fontSize: "1rem",
+    backgroundColor: isDark ? "#23272f" : "var(--input-bg)",
+    color: isDark ? "#ecf1fa" : "var(--text-main)",
+    transition: "background-color 0.2s, color 0.2s, border-color 0.2s",
+    boxSizing: "border-box",
+  };
+
+  const buttonStyle = {
+    width: "100%",
+    padding: "12px",
+    backgroundColor: isDark ? "#4da5ff" : "var(--accent-color)",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "1rem",
+    cursor: "pointer",
+    fontWeight: "bold",
+    transition: "background-color 0.3s",
+    boxSizing: "border-box",
+  };
+
+  const roleOptions = [
+    { value: "Doctor", label: t("Doctor", "Doktor") },
+    { value: "Nurse", label: t("Nurse", "Hemşire") },
+    { value: "Technician", label: t("Technician", "Teknisyen") },
+  ];
+
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleRegister = async () => {
+    try {
+      await api.post("/auth/register", form);
+      navigate("/login");
+    } catch (err) {
+      const msg =
+        err.response?.data?.detail ||
+        t("Registration failed!", "Kayıt başarısız!");
+      alert(msg);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "var(--bg-main)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        fontFamily: "Segoe UI, Arial, sans-serif",
+        padding: "20px",
+        transition: "background 0.2s, color 0.2s",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          backgroundColor: "var(--card-bg)",
+          padding: "40px 48px 36px 48px",
+          borderRadius: "8px",
+          border: isDark
+            ? "1.5px solid #23272f"
+            : "1.5px solid var(--accent-color)",
+          boxShadow: isDark ? "0 4px 24px #16192555" : "0 4px 16px #83bfff22",
+          width: "100%",
+          maxWidth: "400px",
+          textAlign: "center",
+          color: "var(--text-main)",
+          transition: "background 0.2s, border 0.2s, color 0.2s",
+        }}
+      >
+        {/* Theme & Language Switches */}
+        <div
+          style={{
+            position: "absolute",
+            top: 20,
+            right: 20,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          {/* Light/Dark */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <LightIcon active={theme === "light"} />
+            <Switch
+              checked={theme === "dark"}
+              onChange={(checked) => setTheme(checked ? "dark" : "light")}
+            />
+            <DarkIcon active={theme === "dark"} />
+          </div>
+          {/* English/Turkish */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <FlagUSA active={language === "en"} />
+            <Switch
+              checked={language === "tr"}
+              onChange={(checked) => setLanguage(checked ? "tr" : "en")}
+            />
+            <FlagTR active={language === "tr"} />
+          </div>
+        </div>
+
+        <div
+          style={{
+            width: "50px",
+            height: "50px",
+            borderRadius: "50%",
+            backgroundColor: "var(--accent-color)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            margin: "0 auto 20px auto",
+          }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            fill="#fff"
+            viewBox="0 0 24 24"
+          >
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+          </svg>
+        </div>
+
+        <h2 style={{ marginBottom: "20px", color: "var(--accent-color)" }}>
+          {t("Register", "Kayıt Ol")}
+        </h2>
+
+        {/* Form Fields */}
+        <input
+          type="text"
+          name="username"
+          placeholder={t("Username", "Kullanıcı Adı")}
+          value={form.username}
+          onChange={handleChange}
+          style={inputStyle}
+        />
+        <input
+          type="email"
+          name="email"
+          placeholder={t("Email", "E-posta")}
+          value={form.email}
+          onChange={handleChange}
+          style={inputStyle}
+        />
+        <input
+          type="text"
+          name="first_name"
+          placeholder={t("First Name", "Ad")}
+          value={form.first_name}
+          onChange={handleChange}
+          style={inputStyle}
+        />
+        <input
+          type="text"
+          name="last_name"
+          placeholder={t("Last Name", "Soyad")}
+          value={form.last_name}
+          onChange={handleChange}
+          style={inputStyle}
+        />
+        <input
+          type="password"
+          name="password"
+          placeholder={t("Password", "Şifre")}
+          value={form.password}
+          onChange={handleChange}
+          style={inputStyle}
+        />
+        <select
+          name="role"
+          value={form.role}
+          onChange={handleChange}
+          style={inputStyle}
+          required
+        >
+          <option value="" disabled>
+            {t("Select role", "Rol Seçin")}
+          </option>
+          {roleOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Submit */}
+        <button
+          onClick={handleRegister}
+          style={buttonStyle}
+          onMouseOver={(e) =>
+            (e.target.style.backgroundColor = "var(--accent-hover)")
+          }
+          onMouseOut={(e) =>
+            (e.target.style.backgroundColor = "var(--accent-color)")
+          }
+        >
+          {t("Register", "Kayıt Ol")}
+        </button>
+
+        <p
+          style={{
+            marginTop: "20px",
+            fontSize: "0.9rem",
+            color: "var(--text-muted)",
+          }}
+        >
+          {t("Already have an account?", "Zaten hesabınız var mı?")}{" "}
+          <Link to="/login" style={{ color: "#28a745", fontWeight: "bold" }}>
+            {t("Login", "Giriş Yap")}
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// — Support components —
 function Switch({ checked, onChange }) {
   return (
     <div
@@ -123,7 +367,13 @@ function FlagUSA({ active }) {
       <rect width="8" height="7" fill="#3C3B6E" />
       {[0, 2, 4].map((x, xi) =>
         [1, 3, 5].map((y, yi) => (
-          <circle key={xi + yi} cx={2 + x} cy={1 + y} r="0.45" fill="#fff" />
+          <circle
+            key={`${xi}-${yi}`}
+            cx={2 + x}
+            cy={1 + y}
+            r="0.45"
+            fill="#fff"
+          />
         ))
       )}
     </svg>
@@ -149,244 +399,3 @@ function FlagTR({ active }) {
     </svg>
   );
 }
-
-function Register() {
-  const navigate = useNavigate();
-  const { theme, setTheme } = useTheme();
-  const { language, setLanguage } = useLanguage();
-
-  const [form, setForm] = useState({
-    username: "",
-    email: "",
-    first_name: "",
-    last_name: "",
-    password: "",
-    role: "",
-  });
-
-  useEffect(() => {
-    const pendingTheme = localStorage.getItem("pending_theme");
-    if (pendingTheme) setTheme(pendingTheme);
-    const pendingLanguage = localStorage.getItem("pending_language");
-    if (pendingLanguage) setLanguage(pendingLanguage);
-  }, [setTheme, setLanguage]);
-
-  const isDark = theme === "dark";
-
-  const inputStyle = {
-    width: "100%",
-    padding: "12px 16px",
-    marginBottom: "15px",
-    borderRadius: "6px",
-    border: `1px solid ${isDark ? "#23272f" : "var(--accent-color)"}`,
-    fontSize: "1rem",
-    boxSizing: "border-box",
-    backgroundColor: isDark ? "#23272f" : "var(--input-bg)",
-    color: isDark ? "#ecf1fa" : "var(--text-main)",
-    transition: "background-color 0.2s, color 0.2s, border-color 0.2s",
-  };
-
-  const buttonStyle = {
-    width: "100%",
-    padding: "12px",
-    backgroundColor: isDark ? "#4da5ff" : "var(--accent-color)",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "1rem",
-    cursor: "pointer",
-    fontWeight: "bold",
-    boxSizing: "border-box",
-    transition: "background-color 0.3s",
-  };
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleRegister = async () => {
-    try {
-      await api.post("/auth/register", {
-        ...form,
-      });
-      navigate("/login");
-    } catch (err) {
-      if (err.response?.data?.detail) {
-        alert(err.response.data.detail);
-      } else {
-        alert("Registration failed!");
-      }
-    }
-  };
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: isDark ? "var(--bg-main)" : "var(--bg-main)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        fontFamily: "Segoe UI, Arial, sans-serif",
-        padding: "20px",
-        transition: "background 0.2s, color 0.2s",
-      }}
-    >
-      <div
-        style={{
-          position: "relative",
-          backgroundColor: isDark ? "var(--card-bg)" : "var(--card-bg)",
-          padding: "40px 48px 36px 48px",
-          borderRadius: "8px",
-          border: isDark
-            ? "1.5px solid #23272f"
-            : "1.5px solid var(--accent-color)",
-          boxShadow: isDark ? "0 4px 24px #16192555" : "0 4px 16px #83bfff22",
-          width: "100%",
-          maxWidth: "400px",
-          textAlign: "center",
-          color: isDark ? "var(--text-main)" : "var(--text-main)",
-          transition: "background 0.2s, border 0.2s, color 0.2s",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: 20,
-            right: 20,
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <LightIcon active={theme === "light"} />
-            <Switch
-              checked={theme === "dark"}
-              onChange={(checked) => setTheme(checked ? "dark" : "light")}
-            />
-            <DarkIcon active={theme === "dark"} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <FlagUSA active={language === "en"} />
-            <Switch
-              checked={language === "tr"}
-              onChange={(checked) => setLanguage(checked ? "tr" : "en")}
-            />
-            <FlagTR active={language === "tr"} />
-          </div>
-        </div>
-
-        <div
-          style={{
-            width: "50px",
-            height: "50px",
-            borderRadius: "50%",
-            backgroundColor: "var(--accent-color)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            margin: "0 auto 20px auto",
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            fill="#fff"
-            viewBox="0 0 24 24"
-          >
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-          </svg>
-        </div>
-
-        <h2 style={{ marginBottom: "20px", color: "var(--accent-color)" }}>
-          Register
-        </h2>
-        <input
-          type="text"
-          name="username"
-          placeholder="Username"
-          value={form.username}
-          onChange={handleChange}
-          style={inputStyle}
-        />
-        <input
-          type="email"
-          name="email"
-          placeholder="Email"
-          value={form.email}
-          onChange={handleChange}
-          style={inputStyle}
-        />
-        <input
-          type="text"
-          name="first_name"
-          placeholder="First Name"
-          value={form.first_name}
-          onChange={handleChange}
-          style={inputStyle}
-        />
-        <input
-          type="text"
-          name="last_name"
-          placeholder="Last Name"
-          value={form.last_name}
-          onChange={handleChange}
-          style={inputStyle}
-        />
-        <input
-          type="password"
-          name="password"
-          placeholder="Password"
-          value={form.password}
-          onChange={handleChange}
-          style={inputStyle}
-        />
-        <select
-          name="role"
-          value={form.role}
-          onChange={handleChange}
-          style={inputStyle}
-          required
-        >
-          <option value="" disabled>
-            Role
-          </option>
-          {roleOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-
-        <button
-          onClick={handleRegister}
-          style={buttonStyle}
-          onMouseOver={(e) =>
-            (e.target.style.backgroundColor = "var(--accent-hover)")
-          }
-          onMouseOut={(e) =>
-            (e.target.style.backgroundColor = "var(--accent-color)")
-          }
-        >
-          Register
-        </button>
-        <p
-          style={{
-            marginTop: "20px",
-            fontSize: "0.9rem",
-            color: "var(--text-muted)",
-          }}
-        >
-          Already have an account?{" "}
-          <Link to="/login" style={{ color: "#28a745", fontWeight: "bold" }}>
-            Login
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
-}
-
-export default Register;

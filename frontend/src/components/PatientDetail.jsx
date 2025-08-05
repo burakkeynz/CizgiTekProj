@@ -10,11 +10,14 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { useLanguage } from "./LanguageContext";
 
-function BloodTestCard({ data }) {
+function BloodTestCard({ data, t }) {
   return (
     <div style={styles.card}>
-      <h3 style={styles.cardTitle}>Kan Değeri Geçmişi</h3>
+      <h3 style={styles.cardTitle}>
+        {t("Blood Test History", "Kan Değeri Geçmişi")}
+      </h3>
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-card)" />
@@ -44,10 +47,12 @@ function BloodTestCard({ data }) {
   );
 }
 
-function CardiologyCard({ selectedId, setSelectedId, data }) {
+function CardiologyCard({ selectedId, setSelectedId, data, t }) {
   return (
     <div style={styles.card}>
-      <h3 style={styles.cardTitle}>Kardiyoloji Özetleri</h3>
+      <h3 style={styles.cardTitle}>
+        {t("Cardiology Summaries", "Kardiyoloji Özetleri")}
+      </h3>
       <div
         style={{
           display: "flex",
@@ -99,10 +104,12 @@ function CardiologyCard({ selectedId, setSelectedId, data }) {
   );
 }
 
-function RadiologyCards({ selectedId, setSelectedId, data }) {
+function RadiologyCards({ selectedId, setSelectedId, data, t }) {
   return (
     <div style={styles.card}>
-      <h3 style={styles.cardTitle}>Radyoloji Görüntüleri</h3>
+      <h3 style={styles.cardTitle}>
+        {t("Radiology Images", "Radyoloji Görüntüleri")}
+      </h3>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
         {data.map((item) => {
           const isSelected = selectedId === item.id;
@@ -145,6 +152,8 @@ export default function PatientDetail() {
   const { id } = useParams();
   const [patient, setPatient] = useState(null);
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
 
   const [selectedCardiology, setSelectedCardiology] = useState(null);
   const [selectedRadiology, setSelectedRadiology] = useState(null);
@@ -170,25 +179,31 @@ export default function PatientDetail() {
   const cardiologySummaries = [
     {
       id: 1,
-      title: "EKG",
+      title: t("ECG", "EKG"),
       date: "2024-07-01",
-      summary: "Normal sinüs ritmi, taşikardi yok.",
+      summary: t(
+        "Normal sinus rhythm, no tachycardia.",
+        "Normal sinüs ritmi, taşikardi yok."
+      ),
     },
     {
       id: 2,
-      title: "Efor Testi",
+      title: t("Stress Test", "Efor Testi"),
       date: "2024-07-10",
-      summary: "Hafif egzersizle taşikardi, negatif iskemik bulgu.",
+      summary: t(
+        "Mild tachycardia during light exercise, no ischemic finding.",
+        "Hafif egzersizle taşikardi, negatif iskemik bulgu."
+      ),
     },
   ];
 
   const radiologyImages = [
     { id: 1, type: "MR", date: "2024-05-12" },
-    { id: 2, type: "BT", date: "2024-06-01" },
-    { id: 3, type: "Röntgen", date: "2024-06-15" },
+    { id: 2, type: "CT", date: "2024-06-01" },
+    { id: 3, type: t("X-Ray", "Röntgen"), date: "2024-06-15" },
   ];
 
-  if (!patient) return <div>Yükleniyor...</div>;
+  if (!patient) return <div>{t("Loading...", "Yükleniyor...")}</div>;
 
   return (
     <div
@@ -223,29 +238,22 @@ export default function PatientDetail() {
           marginBottom: 12,
         }}
       >
-        ← Geri
+        ← {t("Back", "Geri")}
       </button>
 
-      {/* Kan testi */}
-      <BloodTestCard
-        data={bloodTestData}
-        style={{ gridArea: "1 / 1 / 2 / 2" }}
-      />
-
-      {/* Kardiyoloji */}
+      <BloodTestCard data={bloodTestData} t={t} />
       <CardiologyCard
         selectedId={selectedCardiology}
         setSelectedId={setSelectedCardiology}
         data={cardiologySummaries}
-        style={{ gridArea: "1 / 2 / 2 / 3" }}
+        t={t}
       />
-
-      {/* Radyoloji */}
       <div style={{ gridColumn: "1 / span 2" }}>
         <RadiologyCards
           selectedId={selectedRadiology}
           setSelectedId={setSelectedRadiology}
           data={radiologyImages}
+          t={t}
         />
       </div>
     </div>

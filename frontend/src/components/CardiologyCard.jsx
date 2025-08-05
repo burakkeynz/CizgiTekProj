@@ -1,23 +1,27 @@
-import React, { useState } from "react";
+import React from "react";
 import ekgexp from "../assets/ekgexp.png";
 import efortesti from "../assets/efortesti.jpg";
-
-const cardiologyData = [
-  {
-    id: 1,
-    title: "EKG",
-    summary: "Elektrokardiyografi testi.",
-    image: ekgexp,
-  },
-  {
-    id: 2,
-    title: "Efor Testi",
-    summary: "Efor testi açıklaması.",
-    image: efortesti,
-  },
-];
+import { useLanguage } from "./LanguageContext";
 
 export default function CardiologyCards({ selectedId, setSelectedId }) {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
+  const cardiologyData = [
+    {
+      id: 1,
+      title: t("ECG", "EKG"),
+      summary: t("Electrocardiogram test.", "Elektrokardiyografi testi."),
+      image: ekgexp,
+    },
+    {
+      id: 2,
+      title: t("Stress Test", "Efor Testi"),
+      summary: t("Description of the stress test.", "Efor testi açıklaması."),
+      image: efortesti,
+    },
+  ];
+
   return (
     <section style={{ marginTop: 40, display: "flex", gap: 24 }}>
       <div style={{ flex: 1 }}>
@@ -29,7 +33,7 @@ export default function CardiologyCards({ selectedId, setSelectedId }) {
             color: "var(--accent-hover)",
           }}
         >
-          Kardiyoloji Özetleri
+          {t("Cardiology Summaries", "Kardiyoloji Özetleri")}
         </h3>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           {cardiologyData.map((item) => {
@@ -105,7 +109,7 @@ export default function CardiologyCards({ selectedId, setSelectedId }) {
           color: "var(--text-main)",
         }}
       >
-        <h4>Kalan Testler</h4>
+        <h4>{t("Remaining Tests", "Kalan Testler")}</h4>
         {cardiologyData
           .filter((item) => item.id !== selectedId)
           .map((item) => (

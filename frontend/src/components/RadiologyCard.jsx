@@ -1,6 +1,10 @@
 import React from "react";
+import { useLanguage } from "./LanguageContext";
 
 export default function RadiologyCards({ selectedId, setSelectedId, data }) {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
+
   return (
     <section style={{ marginTop: 40 }}>
       <h3
@@ -11,7 +15,7 @@ export default function RadiologyCards({ selectedId, setSelectedId, data }) {
           color: "var(--accent-hover)",
         }}
       >
-        Radiogoly Results
+        {t("Radiology Results", "Radyoloji Sonuçları")}
       </h3>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         {data.map((item) => {
@@ -59,7 +63,10 @@ export default function RadiologyCards({ selectedId, setSelectedId, data }) {
                     textAlign: "center",
                   }}
                 >
-                  Burada detaylı görüntü veya açıklama olabilir.
+                  {t(
+                    "Detailed image or explanation can be shown here.",
+                    "Burada detaylı görüntü veya açıklama olabilir."
+                  )}
                 </div>
               )}
             </div>

@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
+import { useLanguage } from "./LanguageContext";
 import { useSelector } from "react-redux";
 import api from "../api";
 
-function getUserName(user) {
-  if (!user) return "Unknown user";
+function getUserName(user, language) {
+  const t = (en, tr) => (language === "tr" ? tr : en);
+  if (!user) return t("Unknown user", "Bilinmeyen kullanıcı");
   if (user.name) return user.name;
   if (user.first_name && user.last_name)
     return user.first_name + " " + user.last_name;
   if (user.first_name) return user.first_name;
   if (user.username) return user.username;
-  return "Unknown user";
+  return t("Unknown user", "Bilinmeyen kullanıcı");
 }
-function UserAvatar({ user }) {
-  const name = getUserName(user);
+function UserAvatar({ user, language }) {
+  const name = getUserName(user, language);
   return (
     <div
       style={{
@@ -81,6 +83,8 @@ export default function Chat({
   setConversations,
 }) {
   const { theme } = useTheme();
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
   const isDark = theme === "dark";
   const navigate = useNavigate();
   const { conversationId } = useParams();
@@ -159,7 +163,7 @@ export default function Chat({
               color: "var(--text-label)",
             }}
           >
-            Chats
+            {t("Chats", "Sohbetler")}
           </span>
           <button
             style={{
@@ -181,7 +185,7 @@ export default function Chat({
               transition: "background .17s, box-shadow .17s",
             }}
             onClick={() => setShowDropdown((v) => !v)}
-            title="Create New Chat"
+            title={t("Create New Chat", "Yeni Sohbet Oluştur")}
           >
             +
           </button>
@@ -195,7 +199,7 @@ export default function Chat({
               textAlign: "center",
             }}
           >
-            No chat yet
+            {t("No chat yet", "Henüz sohbet yok")}
           </div>
         )}
         {conversations.map((c) => (
@@ -243,9 +247,9 @@ export default function Chat({
               >
                 {c.last_message
                   ? `${
-                      c.last_message.from_me ? "You: " : ""
+                      c.last_message.from_me ? t("You: ", "Sen: ") : ""
                     }${lastMessagePreview(c.last_message.content)}`
-                  : "Henüz mesaj yok"}
+                  : t("No message yet", "Henüz mesaj yok")}
               </div>
             </div>
           </div>
@@ -279,7 +283,9 @@ export default function Chat({
                 fontWeight: 600,
               }}
             >
-              <span style={{ fontWeight: 600 }}>Select Person</span>
+              <span style={{ fontWeight: 600 }}>
+                {t("Select Person", "Kişi Seç")}
+              </span>
               <span
                 onClick={() => setShowDropdown(false)}
                 style={{ cursor: "pointer", fontSize: 18, padding: 3 }}
@@ -295,7 +301,7 @@ export default function Chat({
                   textAlign: "center",
                 }}
               >
-                Kullanıcı yok
+                {t("No user", "Kullanıcı yok")}
               </div>
             )}
             {availableUsers.map((u) => (
@@ -353,7 +359,10 @@ export default function Chat({
               fontWeight: 500,
             }}
           >
-            Select a chat or create new one.
+            {t(
+              "Select a chat or create new one.",
+              "Bir sohbet seç ya da oluştur."
+            )}
           </div>
         )}
       </div>

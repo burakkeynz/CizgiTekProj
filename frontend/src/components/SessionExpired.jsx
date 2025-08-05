@@ -1,16 +1,28 @@
 import { useEffect } from "react";
 import { useTheme } from "./ThemeContext";
+import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
 function SessionExpired() {
   const { theme, setTheme } = useTheme();
-  const isDark = theme === "dark";
+  const { language, setLanguage } = useLanguage();
+
+  const lastTheme = localStorage.getItem("theme") || "light";
+  const lastLanguage = localStorage.getItem("language") || "en";
+
+  const isDark = lastTheme === "dark";
+  const t = (en, tr) => (lastLanguage === "tr" ? tr : en);
 
   useEffect(() => {
-    const lastTheme = localStorage.getItem("last_theme") || "light";
     setTheme(lastTheme);
+    setLanguage(lastLanguage);
     api.post("/auth/logout").catch(() => {});
-  }, [setTheme]);
+  }, []);
+
+  const handleLoginClick = () => {
+    localStorage.setItem("theme", lastTheme);
+    localStorage.setItem("language", lastLanguage);
+  };
 
   return (
     <div
@@ -22,7 +34,6 @@ function SessionExpired() {
         background: isDark
           ? "linear-gradient(135deg, #1a1d22, #23272f 80%)"
           : "#f8fafc",
-        transition: "background 0.2s",
       }}
     >
       <div
@@ -36,7 +47,6 @@ function SessionExpired() {
           flexDirection: "column",
           alignItems: "center",
           color: isDark ? "#ecf1fa" : "#23272f",
-          transition: "background 0.2s, border 0.2s, color 0.2s",
         }}
       >
         <span
@@ -49,12 +59,14 @@ function SessionExpired() {
           😕
         </span>
         <div style={{ fontSize: 22, fontWeight: 600, marginBottom: 14 }}>
-          Your session is over
+          {t("Your session is over", "Oturumunuz sona erdi")}
         </div>
-        <div style={{ marginBottom: 20 }}>Please log in again.</div>
+        <div style={{ marginBottom: 20 }}>
+          {t("Please log in again.", "Lütfen tekrar giriş yapın.")}
+        </div>
         <a
           href="/login"
-          onClick={() => localStorage.removeItem("last_theme")}
+          onClick={handleLoginClick}
           style={{
             background: "#0066ff",
             color: "#fff",
@@ -63,10 +75,9 @@ function SessionExpired() {
             textDecoration: "none",
             fontWeight: 600,
             boxShadow: isDark ? "0 2px 8px #0066ff55" : "0 2px 8px #bfdcff33",
-            transition: "box-shadow 0.2s",
           }}
         >
-          Login
+          {t("Login", "Giriş Yap")}
         </a>
       </div>
     </div>

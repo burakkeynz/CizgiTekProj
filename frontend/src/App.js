@@ -53,6 +53,23 @@ function App() {
 
   const dispatch = useDispatch();
 
+  //Sekme kapatılınca da status'ü offlinea çevirme
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (window.socket && user && user.id) {
+        window.socket.emit("user_status", {
+          user_id: user.id,
+          status: "offline",
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [user, socket]);
+
   // Sync user from useAuthCheck
   useEffect(() => {
     setUser(userFromAuth);
@@ -89,6 +106,7 @@ function App() {
 
     s.on("connect", () => {
       s.emit("join", { user_id: user.id });
+      s.emit("user_status", { user_id: user.id, status: "online" }); //giriş yapıldıgında da anlık online görüntüsü alabilmem için ekledim
     });
     s.on("connect_error", (err) => console.error("❌ SOCKET error", err));
     s.on("user_status_update", (data) => {
@@ -153,6 +171,10 @@ function App() {
     if (alreadyRedirected.current) return;
     if (hasSession === false && shouldCheckSession) {
       alreadyRedirected.current = true;
+      const theme = localStorage.getItem("theme") || "light";
+      const language = localStorage.getItem("language") || "en";
+      localStorage.setItem("pending_theme", theme);
+      localStorage.setItem("pending_language", language);
       if (expired) {
         navigate("/session-expired", { replace: true });
       } else {
@@ -160,6 +182,7 @@ function App() {
       }
       return;
     }
+
     if (
       hasSession === true &&
       (pathname === "/login" || pathname === "/register")
@@ -181,7 +204,7 @@ function App() {
         position: "relative",
       }}
     >
-      {showLayout && <Navbar />}
+      {showLayout && <Navbar user={user} />}
       <div style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<Main />} />

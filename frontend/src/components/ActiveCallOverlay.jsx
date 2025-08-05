@@ -2,11 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import ActiveCall from "./ActiveCall";
 import { Rnd } from "react-rnd";
+import { useLanguage } from "./LanguageContext";
 
 const MINIMIZED_SIZE = { width: 170, height: 38 };
 const OVERLAY_MARGIN_TOP = 0;
 
 export default function ActiveCallOverlay({ socket, currentUser }) {
+  const { language } = useLanguage();
+  const t = (en, tr) => (language === "tr" ? tr : en);
   const { inCall } = useSelector((state) => state.call);
   const [minimized, setMinimized] = useState(false);
   const [panelRect, setPanelRect] = useState(null);
@@ -123,9 +126,9 @@ export default function ActiveCallOverlay({ socket, currentUser }) {
                 zIndex: 1,
               }}
               onClick={() => setMinimized(false)}
-              title="Görüşmeyi Aç"
+              title={t("Open Call", "Görüşmeyi Aç")}
             >
-              Call is active • Open
+              {t("Call is active • Open", "Görüşme aktif • Aç")}
             </button>
           )}
         </div>
