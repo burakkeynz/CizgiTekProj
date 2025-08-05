@@ -227,8 +227,6 @@ export default function ActiveCall({
         if (chat_id) {
           dispatch(setActiveChat(chat_id));
           navigate(`/chat/${chat_id}`);
-        } else if (peerUser?.id) {
-          navigate(`/chat/${peerUser.id}`);
         }
       }
     })();
