@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { setMessages, addMessage, setConversations } from "../store/chatSlice";
 import { startCall } from "../store/callSlice";
 import { useLanguage } from "./LanguageContext";
+import { toast } from "react-toastify";
 import api from "../api";
 
 // Status metni
@@ -249,10 +250,35 @@ export default function ChatDetail() {
 
   function handleAudioCall() {
     if (!selectedChat) return;
+
+    const status = selectedChat.user.status;
+    if (["offline", "busy", "in_call"].includes(status)) {
+      toast.warn(
+        t(
+          "User is not available for a call right now.",
+          "Kullanıcı şu anda arama için uygun değil."
+        )
+      );
+      return;
+    }
+
     dispatch(startCall({ type: "audio", peerUser: selectedChat.user }));
   }
+
   function handleVideoCall() {
     if (!selectedChat) return;
+
+    const status = selectedChat.user.status;
+    if (["offline", "busy", "in_call"].includes(status)) {
+      toast.warn(
+        t(
+          "User is not available for a call right now.",
+          "Kullanıcı şu anda arama için uygun değil."
+        )
+      );
+      return;
+    }
+
     dispatch(startCall({ type: "video", peerUser: selectedChat.user }));
   }
   function handleFileClick() {

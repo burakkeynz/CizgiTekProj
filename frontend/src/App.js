@@ -24,6 +24,8 @@ import CallModal from "./components/CallModal";
 import ActiveCallOverlay from "./components/ActiveCallOverlay";
 import { useDispatch } from "react-redux";
 import { receiveCall } from "./store/callSlice";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 function App() {
   const location = useLocation();
@@ -277,6 +279,7 @@ function App() {
           setUser={setUser}
         />
       )}
+      <ToastContainer position="top-right" autoClose={3000} />
     </div>
   );
 }

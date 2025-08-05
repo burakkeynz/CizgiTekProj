@@ -298,9 +298,13 @@ export default function ActiveCall({
     <div
       style={{
         background: "linear-gradient(135deg, #23273c 84%, #262d43 100%)",
-        borderRadius: 22,
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
         boxShadow: "0 8px 32px #0007",
         border: "1.5px solid #2d3343",
+        borderBottom: "2px solid #3a4153",
         padding: "26px 34px 18px 34px",
         display: "flex",
         flexDirection: "column",
