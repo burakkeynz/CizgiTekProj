@@ -84,6 +84,7 @@ export default function Chat({
   conversations,
   setConversations,
 }) {
+  const [typingState, setTypingState] = useState({});
   const { theme } = useTheme();
   const { language } = useLanguage();
   const t = (en, tr) => (language === "tr" ? tr : en);
@@ -101,6 +102,52 @@ export default function Chat({
     };
     fetchUsers();
   }, []);
+
+  //Typing eventini dinleme
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleTyping = (data) => {
+      setTypingState((prev) => ({
+        ...prev,
+        [data.conversation_id]: true,
+      }));
+      setTimeout(() => {
+        setTypingState((prev) => ({
+          ...prev,
+          [data.conversation_id]: false,
+        }));
+      }, 2000);
+    };
+
+    socket.on("typing", handleTyping);
+    return () => socket.off("typing", handleTyping);
+  }, [socket]);
+
+  //Son mesajı anlık göstermek adına socket
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReceiveMessage = (data) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          String(c.conversation_id) === String(data.conversation_id)
+            ? {
+                ...c,
+                last_message: {
+                  from_me: String(data.sender_id) === String(currentUser.id),
+                  content: data.content,
+                  timestamp: data.timestamp,
+                },
+              }
+            : c
+        )
+      );
+    };
+
+    socket.on("receive_message", handleReceiveMessage);
+    return () => socket.off("receive_message", handleReceiveMessage);
+  }, [socket, currentUser?.id, setConversations]);
 
   useEffect(() => {
     const fetchConversations = async () => {
@@ -332,7 +379,9 @@ export default function Chat({
                     maxWidth: 175,
                   }}
                 >
-                  {c.last_message
+                  {typingState[c.conversation_id]
+                    ? t("Typing...", "Yazıyor...")
+                    : c.last_message
                     ? `${
                         c.last_message.from_me ? t("You: ", "Sen: ") : ""
                       }${lastMessagePreview(c.last_message.content)}`
