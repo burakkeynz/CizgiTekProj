@@ -170,6 +170,45 @@ function App() {
   }, [hasSession]);
 
   useEffect(() => {
+    if (!socket) return;
+
+    socket.on("new_conversation", (data) => {
+      const { conversation_id, sender_info, content, timestamp } = data;
+
+      setConversations((prev) => {
+        const exists = prev.some(
+          (c) => String(c.user.id) === String(sender_info.id)
+        );
+        if (exists) return prev;
+
+        return [
+          {
+            conversation_id,
+            user: {
+              id: sender_info.id,
+              first_name: sender_info.first_name,
+              last_name: sender_info.last_name,
+              username: sender_info.username,
+              profile_picture_url: sender_info.profile_picture_url,
+              status: sender_info.status,
+              role: sender_info.role,
+            },
+            last_message: {
+              from_me: false,
+              content: content,
+              timestamp: timestamp,
+            },
+          },
+          ...prev,
+        ];
+      });
+    });
+
+    return () => {
+      socket.off("new_conversation");
+    };
+  }, [socket]);
+  useEffect(() => {
     if (alreadyRedirected.current) return;
     if (hasSession === false && shouldCheckSession) {
       alreadyRedirected.current = true;

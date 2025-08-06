@@ -4,17 +4,19 @@ import { useTheme } from "./ThemeContext";
 import { useLanguage } from "./LanguageContext";
 import { useSelector } from "react-redux";
 import api from "../api";
+import { toast } from "react-toastify";
 
-function getUserName(user, language) {
-  const t = (en, tr) => (language === "tr" ? tr : en);
-  if (!user) return t("Unknown user", "Bilinmeyen kullanıcı");
+function getUserName(user) {
+  if (!user) return "Bilinmeyen";
   if (user.name) return user.name;
   if (user.first_name && user.last_name)
     return user.first_name + " " + user.last_name;
   if (user.first_name) return user.first_name;
   if (user.username) return user.username;
-  return t("Unknown user", "Bilinmeyen kullanıcı");
+  if (user.avatar) return user.avatar;
+  return String(user.id);
 }
+
 function UserAvatar({ user, language }) {
   const name = getUserName(user, language);
   return (
@@ -101,6 +103,68 @@ export default function Chat({
     fetchUsers();
   }, []);
 
+  const handleDeleteConversation = async (conversationId) => {
+    toast.dismiss(); // Aynı toast tekrar etmesin
+    toast.info(
+      ({ closeToast }) => (
+        <div>
+          <div style={{ marginBottom: 6 }}>
+            {t(
+              "Are you sure you want to delete this chat?",
+              "Bu sohbeti silmek istediğine emin misin?"
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            <button
+              onClick={async () => {
+                try {
+                  await api.delete(`/conversations/${conversationId}`);
+                  setConversations((prev) =>
+                    prev.filter((c) => c.conversation_id !== conversationId)
+                  );
+                  if (String(conversationId) === String(conversationId)) {
+                    navigate("/chat");
+                  }
+                  toast.dismiss();
+                  toast.success(t("Chat deleted.", "Sohbet silindi."));
+                } catch (err) {
+                  toast.dismiss();
+                  toast.error(t("Failed to delete chat", "Sohbet silinemedi"));
+                }
+                closeToast();
+              }}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 6,
+                border: "none",
+                fontWeight: 600,
+                background: "#f44336",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              {t("Yes", "Evet")}
+            </button>
+            <button
+              onClick={closeToast}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                fontWeight: 500,
+                background: "white",
+                cursor: "pointer",
+              }}
+            >
+              {t("No", "Hayır")}
+            </button>
+          </div>
+        </div>
+      ),
+      { autoClose: false, closeOnClick: false, position: "top-center" }
+    );
+  };
+
   const handleUserSelect = async (user) => {
     setShowDropdown(false);
     const existing = conversations.find(
@@ -113,6 +177,7 @@ export default function Chat({
     const res = await api.post("/conversations/start_conversation", {
       receiver_id: user.id,
     });
+
     setConversations((prev) => [
       ...prev,
       { user, conversation_id: res.data.conversation_id, last_message: null },
@@ -208,6 +273,7 @@ export default function Chat({
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
               gap: 13,
               padding: "13px 16px",
               cursor: "pointer",
@@ -221,37 +287,75 @@ export default function Chat({
                   : "transparent",
               marginBottom: 2,
             }}
-            onClick={() => handleUserSelect(c.user)}
           >
-            <UserAvatar user={c.user} />
-            <div>
-              <div
-                style={{
-                  fontWeight: 600,
-                  fontSize: 16,
-                  color: "var(--text-label)",
-                }}
-              >
-                {getUserName(c.user)}
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-muted)",
-                  marginTop: 2,
-                  whiteSpace: "nowrap",
-                  textOverflow: "ellipsis",
-                  overflow: "hidden",
-                  maxWidth: 175,
-                }}
-              >
-                {c.last_message
-                  ? `${
-                      c.last_message.from_me ? t("You: ", "Sen: ") : ""
-                    }${lastMessagePreview(c.last_message.content)}`
-                  : t("No message yet", "Henüz mesaj yok")}
+            {/* Sol taraf: Avatar ve kullanıcı bilgisi */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 13,
+                flex: 1,
+              }}
+              onClick={() => handleUserSelect(c.user)}
+            >
+              <UserAvatar user={c.user} />
+              <div>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 16,
+                    color: "var(--text-label)",
+                  }}
+                >
+                  {getUserName(c.user)}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--text-muted)",
+                    marginTop: 2,
+                    whiteSpace: "nowrap",
+                    textOverflow: "ellipsis",
+                    overflow: "hidden",
+                    maxWidth: 175,
+                  }}
+                >
+                  {c.last_message
+                    ? `${
+                        c.last_message.from_me ? t("You: ", "Sen: ") : ""
+                      }${lastMessagePreview(c.last_message.content)}`
+                    : t("No message yet", "Henüz mesaj yok")}
+                </div>
               </div>
             </div>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteConversation(c.conversation_id);
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: 18,
+                padding: "4px 8px",
+                borderRadius: 6,
+                transition: "background 0.2s, color 0.2s",
+              }}
+              title={t("Delete Chat", "Sohbeti Sil")}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#f44336";
+                e.currentTarget.style.color = "#fff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--text-muted)";
+              }}
+            >
+              ✕
+            </button>
           </div>
         ))}
         {showDropdown && (
@@ -264,9 +368,11 @@ export default function Chat({
               zIndex: 999,
               borderRadius: 14,
               boxShadow: isDark ? "0 6px 24px #0004" : "0 6px 24px #b1bfd622",
-              padding: "16px 10px 10px 10px",
+              padding: "10px 0 10px 0",
               minHeight: 85,
               minWidth: 240,
+              maxHeight: 360,
+              overflowY: "auto",
               background: "var(--card-bg)",
               color: "var(--text-main)",
               animation: "dropdownAnim 0.13s",
@@ -277,54 +383,164 @@ export default function Chat({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                marginBottom: 8,
-                padding: "0 8px",
-                color: "var(--text-muted)",
-                fontWeight: 600,
+                padding: "0 10px",
+                minHeight: 0,
+                marginBottom: 0,
               }}
             >
-              <span style={{ fontWeight: 600 }}>
-                {t("Select Person", "Kişi Seç")}
-              </span>
+              {(() => {
+                const roles = [
+                  "Developer",
+                  "Doctor",
+                  "Nurse",
+                  "Technician",
+                  "Test unit",
+                ];
+                const firstRole = roles.find((role) =>
+                  availableUsers.some(
+                    (u) => (u.role || "").toLowerCase() === role.toLowerCase()
+                  )
+                );
+                if (!firstRole) return null;
+                const roleLabel =
+                  firstRole === "Developer"
+                    ? t("Developer", "Yazılımcı")
+                    : firstRole === "Doctor"
+                    ? t("Doctor", "Doktor")
+                    : firstRole === "Nurse"
+                    ? t("Nurse", "Hemşire")
+                    : firstRole === "Technician"
+                    ? t("Technician", "Teknisyen")
+                    : firstRole === "Test unit"
+                    ? t("Test unit", "Test birimi")
+                    : firstRole;
+                return (
+                  <div
+                    style={{ display: "flex", alignItems: "center", flex: 1 }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: "#5c93f7",
+                        letterSpacing: 0.1,
+                        marginRight: 5,
+                      }}
+                    >
+                      {roleLabel}
+                    </span>
+                  </div>
+                );
+              })()}
               <span
                 onClick={() => setShowDropdown(false)}
-                style={{ cursor: "pointer", fontSize: 18, padding: 3 }}
+                style={{
+                  cursor: "pointer",
+                  fontSize: 20,
+                  padding: 4,
+                  lineHeight: "18px",
+                  color: "#8ea0c6",
+                  borderRadius: "50%",
+                  transition: "background .15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#e5eaff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+                title="Kapat"
               >
                 ✕
               </span>
             </div>
-            {availableUsers.length === 0 && (
-              <div
-                style={{
-                  padding: 24,
-                  color: "var(--text-muted)",
-                  textAlign: "center",
-                }}
-              >
-                {t("No user", "Kullanıcı yok")}
-              </div>
+
+            {["Developer", "Doctor", "Nurse", "Technician", "Test unit"].map(
+              (role, idx) => {
+                const usersForRole = availableUsers.filter(
+                  (u) => (u.role || "").toLowerCase() === role.toLowerCase()
+                );
+                if (!usersForRole.length) return null;
+
+                if (idx === 0) {
+                  return (
+                    <div key={role} style={{ marginBottom: 9, marginTop: 2 }}>
+                      {usersForRole.map((u, i) => (
+                        <div
+                          key={u.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 13,
+                            padding: "10px 12px",
+                            cursor: "pointer",
+                            borderBottom: "1px solid var(--border-card)",
+                            fontSize: 16,
+                            borderRadius: 10,
+                            background: "transparent",
+                            marginBottom: 2,
+                          }}
+                          onClick={() => handleUserSelect(u)}
+                        >
+                          <UserAvatar user={u} />
+                          <div>{getUserName(u)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                //Burda benim olusturdugum dummy roller de gözüksün diye böyle yaptım ama bizim kendi appimizde sadece Doctor Nurse ve Technician rolleri veya baska roller eklenecek
+                const roleLabel =
+                  role === "Developer"
+                    ? t("Developer", "Yazılımcı")
+                    : role === "Doctor"
+                    ? t("Doctor", "Doktor")
+                    : role === "Nurse"
+                    ? t("Nurse", "Hemşire")
+                    : role === "Technician"
+                    ? t("Technician", "Teknisyen")
+                    : role === "Test unit"
+                    ? t("Test unit", "Test birimi")
+                    : role;
+
+                return (
+                  <div key={role} style={{ marginBottom: 9 }}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: "#5c93f7",
+                        margin: "12px 0 6px 12px",
+                        letterSpacing: 0.1,
+                      }}
+                    >
+                      {roleLabel}
+                    </div>
+                    {usersForRole.map((u, i) => (
+                      <div
+                        key={u.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 13,
+                          padding: "10px 12px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid var(--border-card)",
+                          fontSize: 16,
+                          borderRadius: 10,
+                          background: "transparent",
+                          marginBottom: 2,
+                        }}
+                        onClick={() => handleUserSelect(u)}
+                      >
+                        <UserAvatar user={u} />
+                        <div>{getUserName(u)}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
             )}
-            {availableUsers.map((u) => (
-              <div
-                key={u.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 13,
-                  padding: "13px 16px",
-                  cursor: "pointer",
-                  borderBottom: "1px solid var(--border-card)",
-                  fontSize: 16,
-                  borderRadius: 10,
-                  background: "transparent",
-                  marginBottom: 2,
-                }}
-                onClick={() => handleUserSelect(u)}
-              >
-                <UserAvatar user={u} />
-                <div>{getUserName(u)}</div>
-              </div>
-            ))}
           </div>
         )}
       </div>

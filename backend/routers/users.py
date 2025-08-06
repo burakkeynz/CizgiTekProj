@@ -63,11 +63,16 @@ async def get_available_users(user: user_dependency, db: db_dependency):
         {
             "id": u.id,
             "username": u.username,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "name": f"{u.first_name or ''} {u.last_name or ''}".strip() or u.username or "Bilinmeyen",
             "status": u.status,
-            "avatar": u.profile_picture_url,
+            "profile_picture_url": u.profile_picture_url,
+            "role": u.role, 
         }
         for u in users
     ]
+
 
 @router.put("/update-status", status_code=200)
 async def update_status(
