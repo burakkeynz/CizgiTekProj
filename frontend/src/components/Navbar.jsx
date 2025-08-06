@@ -13,12 +13,15 @@ import { useTheme } from "./ThemeContext";
 import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
-export default function Navbar({ user }) {
+export default function Navbar({ user, conversations }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = useTheme();
   const { language } = useLanguage();
   const t = (en, tr) => (language === "tr" ? tr : en);
+  const unreadChatsCount = conversations.filter(
+    (c) => c.unread_count > 0
+  ).length;
 
   const NAV_ITEMS = [
     {
@@ -89,6 +92,7 @@ export default function Navbar({ user }) {
       <div style={{ width: "100%" }}>
         {NAV_ITEMS.map((item) => {
           const isActive = location.pathname.startsWith(item.to);
+          const showBadge = item.to === "/chat" && unreadChatsCount > 0;
           return (
             <Link
               key={item.to}
@@ -106,12 +110,36 @@ export default function Navbar({ user }) {
                 borderRadius: 12,
                 marginBottom: 8,
                 transition: "all 0.17s",
+                position: "relative", // Badge için
               }}
             >
               {React.cloneElement(item.icon, {
                 color: isActive ? "var(--accent-color)" : "var(--nav-icon)",
               })}
               <span>{item.label}</span>
+              {showBadge && (
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 23,
+                    top: 14,
+                    background: "#ff4949",
+                    color: "#fff",
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 1px 4px #0001",
+                    zIndex: 2,
+                  }}
+                >
+                  {unreadChatsCount}
+                </span>
+              )}
             </Link>
           );
         })}

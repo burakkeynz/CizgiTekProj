@@ -91,7 +91,6 @@ export default function Chat({
   const navigate = useNavigate();
   const { conversationId } = useParams();
   const call = useSelector((state) => state.call);
-
   const [availableUsers, setAvailableUsers] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -102,6 +101,18 @@ export default function Chat({
     };
     fetchUsers();
   }, []);
+
+  useEffect(() => {
+    const fetchConversations = async () => {
+      try {
+        const res = await api.get("/conversations/my");
+        setConversations(res.data);
+      } catch (err) {
+        console.log(err);
+      }
+    };
+    fetchConversations();
+  }, [setConversations]);
 
   const handleDeleteConversation = async (conversationId) => {
     toast.dismiss(); // Aynı toast tekrar etmesin
@@ -194,7 +205,7 @@ export default function Chat({
         background: "var(--bg-main)",
       }}
     >
-      {/* Sol panel */}
+      {/* sol panel */}
       <div
         style={{
           width: 320,
@@ -272,7 +283,7 @@ export default function Chat({
             key={c.user?.id}
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "space-between",
               gap: 13,
               padding: "13px 16px",
@@ -286,9 +297,10 @@ export default function Chat({
                   ? "var(--nav-bg-active)"
                   : "transparent",
               marginBottom: 2,
+              position: "relative",
             }}
           >
-            {/* Sol taraf: Avatar ve kullanıcı bilgisi */}
+            {/* avatar ve bilgi */}
             <div
               style={{
                 display: "flex",
@@ -329,35 +341,78 @@ export default function Chat({
               </div>
             </div>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteConversation(c.conversation_id);
-              }}
+            {/*.arpı ve badge*/}
+            <div
               style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 18,
-                padding: "4px 8px",
-                borderRadius: 6,
-                transition: "background 0.2s, color 0.2s",
-              }}
-              title={t("Delete Chat", "Sohbeti Sil")}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "#f44336";
-                e.currentTarget.style.color = "#fff";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-                e.currentTarget.style.color = "var(--text-muted)";
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                position: "relative",
+                minWidth: 24,
               }}
             >
-              ✕
-            </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteConversation(c.conversation_id);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  fontSize: 15,
+                  padding: "2px 4px",
+                  borderRadius: 6,
+                  marginBottom: 5,
+                  transition: "background 0.2s, color 0.2s",
+                  lineHeight: 1,
+                  width: 22,
+                  height: 22,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                title={t("Delete Chat", "Sohbeti Sil")}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#f44336";
+                  e.currentTarget.style.color = "#fff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+              >
+                ✕
+              </button>
+              {c.unread_count > 0 && (
+                <div
+                  style={{
+                    minWidth: 17,
+                    height: 17,
+                    background: "#ff4949",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    boxShadow: "0 1px 4px #0001",
+                    marginTop: 0,
+                    marginRight: 2,
+                    letterSpacing: "-0.5px",
+                    position: "relative",
+                    zIndex: 1,
+                  }}
+                >
+                  {c.unread_count}
+                </div>
+              )}
+            </div>
           </div>
         ))}
+
         {showDropdown && (
           <div
             style={{

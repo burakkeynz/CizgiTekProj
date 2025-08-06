@@ -169,6 +169,25 @@ function App() {
     }
   }, [hasSession]);
 
+  //Şimdi ekliyorum
+  useEffect(() => {
+    if (!socket) return;
+    const handleUnreadUpdate = (data) => {
+      // data: { conversation_id, user_id, unread_count }
+      setConversations((prev) =>
+        prev.map((c) =>
+          String(c.conversation_id) === String(data.conversation_id)
+            ? { ...c, unread_count: data.unread_count }
+            : c
+        )
+      );
+    };
+    socket.on("unread_count_update", handleUnreadUpdate);
+    return () => {
+      socket.off("unread_count_update", handleUnreadUpdate);
+    };
+  }, [socket, setConversations]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -245,7 +264,7 @@ function App() {
         position: "relative",
       }}
     >
-      {showLayout && <Navbar user={user} />}
+      {showLayout && <Navbar user={user} conversations={conversations} />}
       <div style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<Main />} />

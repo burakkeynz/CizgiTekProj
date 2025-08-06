@@ -2,13 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from backend.database import get_db
-from backend.models import UserConversation, UserChatMessage, UserConversationState, Users
+from backend.models import (
+    UserConversation, UserChatMessage, UserConversationState,
+    Users, UserMessageRead
+)
 from backend.routers.auth import get_current_user_from_cookie
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List
 from backend.utils.security import encrypt_message, decrypt_message
-
 import backend.globals as globals_mod
 
 router = APIRouter(
@@ -30,6 +32,9 @@ class ConversationOut(BaseModel):
     class Config:
         from_attributes = True
 
+class MarkReadRequest(BaseModel):
+    message_ids: List[int]
+
 class MessageOut(BaseModel):
     id: int
     sender_id: int
@@ -42,15 +47,31 @@ class MessageOut(BaseModel):
 class MessageCreate(BaseModel):
     content: str
 
+# kaç tane okunmamış mesaj oldugunun countını yapan fonks
+def get_unread_count(db, conversation_id, user_id):
+    convo = db.query(UserConversation).filter_by(id=conversation_id).first()
+    if not convo:
+        return 0
+    other_user_id = convo.user2_id if convo.user1_id == user_id else convo.user1_id
+    unread_query = db.query(UserChatMessage).filter(
+        UserChatMessage.conversation_id == conversation_id,
+        UserChatMessage.sender_id == other_user_id
+    )
+    unread_count = 0
+    for msg in unread_query:
+        is_read = db.query(UserMessageRead).filter_by(
+            user_id=user_id, message_id=msg.id
+        ).first()
+        if not is_read:
+            unread_count += 1
+    return unread_count
+
 @router.get("/my")
 def get_my_conversations(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_from_cookie)
 ):
-    print(f"[HTTP][get_my_conversations] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
-
     user_id = current_user["id"]
-
     conversations = db.query(UserConversation).filter(
         (UserConversation.user1_id == user_id) |
         (UserConversation.user2_id == user_id)
@@ -58,12 +79,10 @@ def get_my_conversations(
 
     result = []
     for convo in conversations:
-        # Kullanıcının bu sohbeti silip silmediğini öğren
         cleared = db.query(UserConversationState).filter_by(
             user_id=user_id,
             conversation_id=convo.id
         ).first()
-
         cleared_at = cleared.cleared_at if cleared else None
 
         last_msg = (
@@ -74,20 +93,33 @@ def get_my_conversations(
             .first()
         )
 
-        # Eğer cleared_at sonrası hiç mesaj yoksa bu sohbeti listeleme
         if cleared_at and not last_msg:
             continue
 
         other_user_id = convo.user2_id if convo.user1_id == user_id else convo.user1_id
         other_user = db.query(Users).filter(Users.id == other_user_id).first()
-
         name = (f"{other_user.first_name or ''} {other_user.last_name or ''}").strip() or other_user.username or "Bilinmeyen"
+
+        #unread count
+        unread_query = db.query(UserChatMessage).filter(
+            UserChatMessage.conversation_id == convo.id,
+            UserChatMessage.sender_id == other_user_id
+        )
+        if cleared_at:
+            unread_query = unread_query.filter(UserChatMessage.timestamp > cleared_at)
+        unread_count = 0
+        for msg in unread_query:
+            is_read = db.query(UserMessageRead).filter_by(
+                user_id=user_id, message_id=msg.id
+            ).first()
+            if not is_read:
+                unread_count += 1
 
         if last_msg:
             try:
                 content = decrypt_message(last_msg.content)
             except Exception:
-                content = "[\u00c7\u00f6z\u00fclemedi]"
+                content = "[Çözülemedi]"
         else:
             content = ""
 
@@ -103,12 +135,11 @@ def get_my_conversations(
                 "from_me": last_msg.sender_id == user_id if last_msg else False,
                 "content": content,
                 "timestamp": str(last_msg.timestamp) if last_msg else None
-            }
+            },
+            "unread_count": unread_count,    # <--- ÖNEMLİ!
         })
 
     return result
-
-
 
 @router.get("/{conversation_id}/messages", response_model=List[MessageOut])
 def get_messages(
@@ -116,24 +147,17 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
-    print(f"[HTTP][get_messages] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
-
     link = db.query(UserConversationState).filter_by(
         conversation_id=conversation_id, user_id=current_user["id"]
     ).first()
-
     if not link:
         raise HTTPException(status_code=403, detail="Bu konuşmaya erişiminiz yok.")
 
-    # Eğer kullanıcı daha önce bu sohbeti sildiyse cleared_at sonrası mesajları cekiyorum
     cleared_at = link.cleared_at
-
     messages_query = db.query(UserChatMessage)\
         .filter(UserChatMessage.conversation_id == conversation_id)
-
     if cleared_at:
         messages_query = messages_query.filter(UserChatMessage.timestamp > cleared_at)
-
     messages = messages_query.order_by(UserChatMessage.timestamp).all()
 
     decrypted_messages = []
@@ -143,7 +167,7 @@ def get_messages(
         try:
             decrypted_content = decrypt_message(m.content)
         except Exception:
-            decrypted_content = "[\u00c7\u00f6z\u00fclemedi]"
+            decrypted_content = "[Çözülemedi]"
 
         if isinstance(decrypted_content, str):
             msg_text = decrypted_content
@@ -170,7 +194,6 @@ def get_messages(
 
     return decrypted_messages
 
-
 @router.post("/{conversation_id}/messages", status_code=201)
 async def send_message(
     conversation_id: int,
@@ -179,13 +202,9 @@ async def send_message(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
-    print(f"[HTTP][send_message] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
-    print(f"[SEND_MESSAGE] API çağrıldı! {conversation_id=}, {payload.content=}")
-
     link = db.query(UserConversationState).filter_by(
         conversation_id=conversation_id, user_id=current_user["id"]
     ).first()
-
     if not link:
         raise HTTPException(status_code=403, detail="Bu konuşmaya mesaj gönderemezsiniz.")
 
@@ -225,7 +244,6 @@ async def send_message(
     # EMIT: receive_message to both sender and receiver if connected
     for sid in set([receiver_sid, sender_sid]):
         if sid and globals_mod.sio:
-            print(f"[EMIT] receive_message: {sid=}, receiver={receiver_id}, sender={current_user['id']}")
             await globals_mod.sio.emit("receive_message", {
                 "message_id": message.id,
                 "conversation_id": conversation_id,
@@ -244,6 +262,14 @@ async def send_message(
             "timestamp": message.timestamp.isoformat(),
         }, to=receiver_sid)
 
+        #karşı tarafa badge update 
+        unread_count = get_unread_count(db, conversation_id, receiver_id)
+        await globals_mod.sio.emit("unread_count_update", {
+            "conversation_id": conversation_id,
+            "user_id": receiver_id,
+            "unread_count": unread_count,
+        }, to=receiver_sid)
+
     return {"message": "Mesaj gönderildi"}
 
 @router.post("/start_conversation")
@@ -252,8 +278,6 @@ def start_conversation(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
-    print(f"[HTTP][start_conversation] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
-
     sender_id = current_user["id"]
     receiver_id = payload.receiver_id
 
@@ -289,8 +313,6 @@ def soft_delete_conversation(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user_from_cookie)
 ):
-    print(f"[HTTP][delete] globals_mod.connected_users id: {id(globals_mod.connected_users)}, content: {globals_mod.connected_users}")
-
     link = db.query(UserConversationState).filter_by(
         conversation_id=conversation_id,
         user_id=current_user["id"]
@@ -302,3 +324,39 @@ def soft_delete_conversation(
     link.cleared_at = datetime.now()
     db.commit()
     return JSONResponse(status_code=204, content=None)
+
+@router.post("/mark_as_read")
+async def mark_messages_as_read(
+    payload: MarkReadRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_from_cookie)
+):
+    user_id = current_user["id"]
+    now = datetime.now()
+    updated_conversation_ids = set()
+    for msg_id in payload.message_ids:
+        msg = db.query(UserChatMessage).filter_by(id=msg_id).first()
+        if msg:
+            updated_conversation_ids.add(msg.conversation_id)
+        exists = db.query(UserMessageRead).filter_by(
+            user_id=user_id, message_id=msg_id
+        ).first()
+        if not exists:
+            db.add(UserMessageRead(user_id=user_id, message_id=msg_id, read_at=now))
+    db.commit()
+
+    for convo_id in updated_conversation_ids:
+        sid = globals_mod.connected_users.get(str(user_id))
+        if sid and globals_mod.sio:
+            unread_count = get_unread_count(db, convo_id, user_id)
+            # Kullanıcıya badge update
+            await globals_mod.sio.emit(
+                "unread_count_update",
+                {
+                    "conversation_id": convo_id,
+                    "user_id": user_id,
+                    "unread_count": unread_count,
+                },
+                to=sid,
+            )
+    return {"success": True, "marked": payload.message_ids}

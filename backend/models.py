@@ -17,6 +17,19 @@ class Users(Base):
   status = Column(String(length=20), default="offline")
   profile_picture_url = Column(String(length=500), nullable=True)
 
+#6 Ağustos 2025 tarihinde eklendi
+class UserMessageRead(Base):
+    __tablename__ = "user_message_reads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message_id = Column(Integer, ForeignKey("user_chat_messages.id"), nullable=False)
+    read_at = Column(DateTime(timezone=True), default=lambda: datetime.now(pytz.timezone("Europe/Istanbul")))
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'message_id', name='unique_user_message_read'),
+    )
+
 #yeni eklendi 25.07.2025
 class UserConversation(Base):
     __tablename__ = "user_conversations"

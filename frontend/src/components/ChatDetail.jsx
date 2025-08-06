@@ -6,6 +6,8 @@ import { setMessages, addMessage, setConversations } from "../store/chatSlice";
 import { startCall } from "../store/callSlice";
 import { useLanguage } from "./LanguageContext";
 import { toast } from "react-toastify";
+import { useCallback } from "react";
+
 import api from "../api";
 
 // Status metni
@@ -130,10 +132,44 @@ export default function ChatDetail() {
   useEffect(() => {
     if (!selectedChat && conversationId) {
       api.get("/conversations/my").then((res) => {
-        dispatch(setConversations(res.data));
+        setConversations(res.data);
       });
     }
-  }, [selectedChat, conversationId, dispatch]);
+  }, [selectedChat, conversationId, setConversations]);
+
+  //Unread-->Read geçişini yapacağım nokta
+  useEffect(() => {
+    if (!messages || !currentUser?.id || !selectedChat) return;
+
+    const unreadMsgIds = messages
+      .filter((msg) => !msg.from_me)
+      .map((msg) => msg.message_id || msg.id);
+
+    if (unreadMsgIds.length > 0 && selectedChat.unread_count > 0) {
+      const prevConversations = [...conversations];
+
+      setConversations(
+        conversations.map((c) =>
+          c.conversation_id === selectedChat.conversation_id
+            ? { ...c, unread_count: 0 }
+            : c
+        )
+      );
+
+      api
+        .post("/conversations/mark_as_read", { message_ids: unreadMsgIds })
+        .catch(() => {
+          setConversations(prevConversations);
+          toast.error("Mesajlar okunmuş olarak işaretlenemedi.");
+        });
+    }
+  }, [
+    messages,
+    currentUser?.id,
+    selectedChat,
+    conversations,
+    setConversations,
+  ]);
 
   useEffect(() => {
     if (!currentUser || !currentUser.id || !conversationId) {
