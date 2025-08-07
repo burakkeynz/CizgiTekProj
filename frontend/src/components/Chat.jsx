@@ -380,7 +380,7 @@ export default function Chat({
                   }}
                 >
                   {typingState[c.conversation_id]
-                    ? t("Typing...", "Yazıyor...")
+                    ? t("typing...", "yazıyor...")
                     : c.last_message
                     ? `${
                         c.last_message.from_me ? t("You: ", "Sen: ") : ""

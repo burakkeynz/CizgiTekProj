@@ -23,7 +23,8 @@ export default function useAuthCheck(shouldRun = true) {
           first_name: res.data.first_name,
           last_name: res.data.last_name,
           role: res.data.role,
-          status: res.data.status, //şimdi eklendi, useAuthCheck artık /me'deki statusu de kontrol ediyor ki f5 olursa status güncel kalsın
+          status: res.data.status,
+          read_receipt_enabled: res.data.read_receipt_enabled, //şimdi eklendi, useAuthCheck artık /me'deki statusu de kontrol ediyor ki f5 olursa status güncel kalsın
         });
         setExpiresIn(res.data.expires_in);
 

@@ -4,7 +4,7 @@ import PasswordSettings from "./PasswordSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import { useLanguage } from "./LanguageContext";
 
-export default function Settings() {
+export default function Settings({ user, setUser }) {
   const [activeTab, setActiveTab] = useState("profile");
   const { language } = useLanguage();
 
@@ -115,7 +115,9 @@ export default function Settings() {
         >
           {activeTab === "profile" && <ProfileSettings />}
           {activeTab === "password" && <PasswordSettings />}
-          {activeTab === "appearance" && <AppearanceSettings />}
+          {activeTab === "appearance" && (
+            <AppearanceSettings user={user} setUser={setUser} />
+          )}
         </div>
       </div>
     </div>

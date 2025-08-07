@@ -40,6 +40,7 @@ class MessageOut(BaseModel):
     sender_id: int
     content: str
     timestamp: datetime
+    read_by: List[int] = [] 
 
     class Config:
         from_attributes = True
@@ -130,6 +131,7 @@ def get_my_conversations(
                 "name": name,
                 "profile_picture_url": other_user.profile_picture_url,
                 "status": other_user.status,
+                "read_receipt_enabled": other_user.read_receipt_enabled,
             },
             "last_message": {
                 "from_me": last_msg.sender_id == user_id if last_msg else False,
@@ -185,11 +187,17 @@ def get_messages(
         else:
             msg_text = str(decrypted_content)
 
+        read_by_users = [
+            r.user_id for r in db.query(UserMessageRead)
+            .filter_by(message_id=m.id).all()
+        ]
+
         decrypted_messages.append(MessageOut(
             id=int(m.id),
             sender_id=int(m.sender_id),
             content=msg_text,
-            timestamp=m.timestamp
+            timestamp=m.timestamp,
+            read_by=read_by_users  
         ))
 
     return decrypted_messages
@@ -334,22 +342,50 @@ async def mark_messages_as_read(
     user_id = current_user["id"]
     now = datetime.now()
     updated_conversation_ids = set()
+    affected_messages = []
+
     for msg_id in payload.message_ids:
         msg = db.query(UserChatMessage).filter_by(id=msg_id).first()
         if msg:
             updated_conversation_ids.add(msg.conversation_id)
-        exists = db.query(UserMessageRead).filter_by(
-            user_id=user_id, message_id=msg_id
-        ).first()
-        if not exists:
-            db.add(UserMessageRead(user_id=user_id, message_id=msg_id, read_at=now))
+            exists = db.query(UserMessageRead).filter_by(
+                user_id=user_id, message_id=msg_id
+            ).first()
+            if not exists:
+                db.add(UserMessageRead(user_id=user_id, message_id=msg_id, read_at=now))
+                affected_messages.append((msg.conversation_id, msg_id))
     db.commit()
+
+    for convo_id, msg_id in affected_messages:
+        convo = db.query(UserConversation).filter_by(id=convo_id).first()
+        peer_id = convo.user2_id if convo.user1_id == user_id else convo.user1_id
+        peer_obj = db.query(Users).filter(Users.id == peer_id).first()
+        peer_sid = globals_mod.connected_users.get(str(peer_id))
+
+        read_by_users = [
+            r.user_id for r in db.query(UserMessageRead).filter_by(message_id=msg_id).all()
+        ]
+        print("EMITTING message_read_update:", convo_id, msg_id, read_by_users)
+
+
+        if peer_obj and peer_obj.read_receipt_enabled and peer_sid and globals_mod.sio:
+            user_obj = db.query(Users).filter(Users.id == user_id).first()
+            await globals_mod.sio.emit(
+                "message_read_update",
+                {
+                    "conversation_id": convo_id,
+                    "message_id": msg_id,
+                    "read_by": read_by_users,
+                    "peer_read_receipt_enabled": peer_obj.read_receipt_enabled,
+                    "my_read_receipt_enabled": user_obj.read_receipt_enabled if user_obj else True,
+                },
+                to=peer_sid
+            )
 
     for convo_id in updated_conversation_ids:
         sid = globals_mod.connected_users.get(str(user_id))
         if sid and globals_mod.sio:
             unread_count = get_unread_count(db, convo_id, user_id)
-            # Kullanıcıya badge update
             await globals_mod.sio.emit(
                 "unread_count_update",
                 {

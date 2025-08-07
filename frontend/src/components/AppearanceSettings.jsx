@@ -1,13 +1,52 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useTheme } from "./ThemeContext";
 import { useLanguage } from "./LanguageContext";
+import api from "../api";
 
-export default function AppearanceSettings() {
+export default function AppearanceSettings({ user, setUser }) {
   const { theme, setTheme } = useTheme();
   const { language, setLanguage } = useLanguage();
 
-  const handleThemeChange = (checked) => setTheme(checked ? "dark" : "light");
-  const handleLanguageChange = (checked) => setLanguage(checked ? "tr" : "en");
+  console.log("[APPEARANCE][RENDER] user:", user);
+  const skipEffect = useRef(false);
+
+  const isReadReceiptOff = (v) => {
+    const result = v === false || v === 0 || v === "0" || v === "false";
+    console.log("[APPEARANCE][isReadReceiptOff]", v, result);
+    return result;
+  };
+
+  const [readReceiptChecked, setReadReceiptChecked] = useState(
+    isReadReceiptOff(user?.read_receipt_enabled)
+  );
+
+  useEffect(() => {
+    if (skipEffect.current) {
+      skipEffect.current = false;
+      return;
+    }
+    setReadReceiptChecked(isReadReceiptOff(user?.read_receipt_enabled));
+  }, [user?.read_receipt_enabled]);
+
+  useEffect(() => {
+    console.log("[APPEARANCE][readReceiptChecked]", readReceiptChecked);
+  }, [readReceiptChecked]);
+
+  const handleReadReceiptChange = (checked) => {
+    setReadReceiptChecked(checked);
+    skipEffect.current = true;
+    api.put("/users/me", { read_receipt_enabled: !checked }).then((res) => {
+      setUser((prev) =>
+        prev
+          ? { ...prev, read_receipt_enabled: res.data.read_receipt_enabled }
+          : prev
+      );
+    });
+  };
+
+  useEffect(() => {
+    if (user) console.log("[FRONTEND][USER OBJ]", user);
+  }, [user]);
 
   return (
     <div>
@@ -21,6 +60,7 @@ export default function AppearanceSettings() {
         {language === "tr" ? "Görünüm" : "Appearance"}
       </h2>
 
+      {/* Tema switch */}
       <div
         style={{
           display: "flex",
@@ -51,7 +91,11 @@ export default function AppearanceSettings() {
             {language === "tr" ? "Açık" : "Light"}
           </span>
         </div>
-        <Switch checked={theme === "dark"} onChange={handleThemeChange} />
+
+        <Switch
+          checked={theme === "dark"}
+          onChange={(checked) => setTheme(checked ? "dark" : "light")}
+        />
         <div
           style={{
             display: "flex",
@@ -76,6 +120,7 @@ export default function AppearanceSettings() {
         </div>
       </div>
 
+      {/* Dil switch */}
       <div
         style={{
           display: "flex",
@@ -90,13 +135,41 @@ export default function AppearanceSettings() {
         >
           {language === "tr" ? "Dil" : "Language"}
         </span>
-        <Switch checked={language === "tr"} onChange={handleLanguageChange} />
+        <Switch
+          checked={language === "tr"}
+          onChange={(checked) => setLanguage(checked ? "tr" : "en")}
+        />
         <FlagTR active={language === "tr"} />
       </div>
-      <div style={{ fontSize: 14, color: "var(--text-muted)" }}>
+
+      {/* Görüldü bilgisi switch */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+          marginBottom: 22,
+        }}
+      >
+        <DoubleTickPreview color="#41C7F3" />
+        {console.log(
+          "[APPEARANCE][Switch’e giden checked]",
+          readReceiptChecked,
+          "user.read_receipt_enabled:",
+          user?.read_receipt_enabled
+        )}
+        <Switch
+          checked={readReceiptChecked}
+          onChange={handleReadReceiptChange}
+        />
+        <DoubleTickPreview color="#bbb" />
+      </div>
+      <div
+        style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 12 }}
+      >
         {language === "tr"
-          ? "Varsayılan olarak uygulama açık temayı ve İngilizce dilini kullanır."
-          : "By default, app uses light theme and English language."}
+          ? "Görüldü bilgisini kapatırsanız, karşı tarafa mesajlarınızın okunup okunmadığı gösterilmez."
+          : "If you turn off read receipt, others won't see if you read their messages."}
       </div>
     </div>
   );
@@ -140,6 +213,34 @@ function Switch({ checked, onChange }) {
         }}
       />
     </div>
+  );
+}
+
+function DoubleTickPreview({ color }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center" }}>
+      <svg width="15" height="15">
+        <polyline
+          points="2,8 6,12 12,4"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.15"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <svg width="15" height="15" style={{ marginLeft: -6 }}>
+        <polyline
+          points="2,8 6,12 12,4"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.15"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ opacity: 0.82 }}
+        />
+      </svg>
+    </span>
   );
 }
 

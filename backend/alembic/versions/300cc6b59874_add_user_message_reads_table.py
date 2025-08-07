@@ -16,14 +16,21 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade():
-    op.create_table(
-        'user_message_reads',
-        sa.Column('id', sa.Integer(), primary_key=True, nullable=False),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
-        sa.Column('message_id', sa.Integer(), sa.ForeignKey('user_chat_messages.id'), nullable=False),
-        sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
-        sa.UniqueConstraint('user_id', 'message_id', name='unique_user_message_read')
-    )
+    # op.create_table(
+    #     'user_message_reads',
+    #     sa.Column('id', sa.Integer(), primary_key=True, nullable=False),
+    #     sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=False),
+    #     sa.Column('message_id', sa.Integer(), sa.ForeignKey('user_chat_messages.id'), nullable=False),
+    #     sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
+    #     sa.UniqueConstraint('user_id', 'message_id', name='unique_user_message_read')
+    # )
+    pass
 
 def downgrade():
-    op.drop_table('user_message_reads')
+    #  op.alter_column(
+    #     'users',
+    #     'read_receipt_enabled',
+    #     existing_type=sa.Boolean(),
+    #     nullable=True  
+    # )
+    pass
