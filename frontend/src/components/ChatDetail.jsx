@@ -1,25 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
 import { useLanguage } from "./LanguageContext";
 import { toast } from "react-toastify";
 import api from "../api";
 
-// Double tick (WhatsApp)
-function DoubleTick({
-  read_by,
-  peerId,
-  peerReadReceiptEnabled,
-  myReadReceiptEnabled, // YENİ EKLENDİ
-}) {
+// Double tick component (WhatsApp style, always inline with hour)
+function DoubleTick({ read_by, peerId }) {
   const seenByPeer = read_by?.includes(peerId);
-
-  // WhatsApp mantığı: İki tarafta da açık olacak, peer görmüş olacak
-  const color =
-    seenByPeer && peerReadReceiptEnabled && myReadReceiptEnabled
-      ? "#41C7F3"
-      : "#bbb";
-
+  const color = seenByPeer ? "#41C7F3" : "#bbb";
   return (
     <span
       style={{ display: "inline-flex", alignItems: "center", marginLeft: 2 }}
@@ -102,11 +91,11 @@ function DotLoader() {
       <span className="dot">.</span>
       <style>
         {`
-        .dot { animation: blink 1.4s infinite both; font-size: 20px; color: #bbb;}
-        .dot:nth-child(2) { animation-delay: .2s; }
-        .dot:nth-child(3) { animation-delay: .4s; }
-        @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
-      `}
+          .dot { animation: blink 1.4s infinite both; font-size: 20px; color: #bbb;}
+          .dot:nth-child(2) { animation-delay: .2s; }
+          .dot:nth-child(3) { animation-delay: .4s; }
+          @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
+        `}
       </style>
     </span>
   );
@@ -142,98 +131,33 @@ function UserAvatar({ user }) {
 }
 
 export default function ChatDetail() {
-  const { conversationId } = useParams();
   const { currentUser, socket, conversations } = useOutletContext();
-
-  const selectedChat = conversations?.find(
-    (c) => String(c.conversation_id) === String(conversationId)
-  );
-  const peerId = selectedChat?.user?.id;
-
   const isDark = document.body.getAttribute("data-theme") === "dark";
   const { language } = useLanguage();
   const t = (en, tr) => (language === "tr" ? tr : en);
+
+  const { conversationId } = useParams();
   const navigate = useNavigate();
 
-  const [peerReadReceiptEnabled, setPeerReadReceiptEnabled] = useState(
-    selectedChat?.user?.read_receipt_enabled !== 1
-  );
-  const [myReadReceiptEnabled, setMyReadReceiptEnabled] = useState(
-    currentUser?.read_receipt_enabled !== 1
-  );
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [typingVisible, setTypingVisible] = useState(false);
   const messageEndRef = useRef(null);
   const fileInputRef = useRef();
-  useEffect(() => {
-    if (!selectedChat) return;
-    const fetchMessages = async () => {
-      const res = await api.get(`/conversations/${conversationId}/messages`);
-      const messageList = (res.data || []).map((msg) => ({
-        ...msg,
-        from_me: String(msg.sender_id) === String(currentUser.id),
-        message_id: msg.id,
-        read_by: msg.read_by || [],
-      }));
-      setMessages(messageList);
-    };
-    fetchMessages();
-  }, [conversationId, selectedChat, currentUser?.id]);
-  //başka sohbete geçince eski ayarı sıfırlama
-  useEffect(() => {
-    setPeerReadReceiptEnabled(selectedChat?.user?.read_receipt_enabled !== 1);
-    setMyReadReceiptEnabled(currentUser?.read_receipt_enabled !== 1);
-  }, [selectedChat, currentUser]);
 
-  //DEBUG
-  useEffect(() => {
-    console.log(
-      "[DEBUG][ChatDetail] peerReadReceiptEnabled:",
-      peerReadReceiptEnabled,
-      "myReadReceiptEnabled:",
-      myReadReceiptEnabled
+  const [isSocketReady, setIsSocketReady] = useState(false);
+
+  const selectedChat = useMemo(() => {
+    return conversations?.find(
+      (c) => String(c.conversation_id) === String(conversationId)
     );
-  }, [peerReadReceiptEnabled, myReadReceiptEnabled]);
+  }, [conversations, conversationId]);
 
-  //Debug 2
-  useEffect(() => {
-    console.log(
-      "[ChatDetail] selectedChat.user.read_receipt_enabled",
-      selectedChat?.user?.read_receipt_enabled
-    );
-    console.log(
-      "[ChatDetail] currentUser.read_receipt_enabled",
-      currentUser?.read_receipt_enabled
-    );
-  }, [selectedChat, currentUser]);
+  const peerId = selectedChat?.user?.id;
 
-  // OKUNMAMIŞLARI OKUNDU YAP
-  useEffect(() => {
-    if (!messages.length || !currentUser?.id || !selectedChat) return;
-    const unreadMsgIds = messages
-      .filter(
-        (msg) => !msg.from_me && !(msg.read_by || []).includes(currentUser.id)
-      )
-      .map((msg) => msg.message_id || msg.id);
-
-    if (unreadMsgIds.length > 0 && selectedChat.unread_count > 0) {
-      api
-        .post("/conversations/mark_as_read", { message_ids: unreadMsgIds })
-        .catch(() => {
-          toast.error("Mesajlar okunmuş olarak işaretlenemedi.");
-        });
-    }
-  }, [messages, currentUser?.id, selectedChat]);
-
-  // SOCKET: MESAJ GELİNCE & OKUNDU GÜNCELLEME
-  useEffect(() => {
-    if (!socket || !currentUser?.id || !selectedChat) return;
-
-    const handleReceiveMessage = (data) => {
-      if (
-        String(data.conversation_id) === String(selectedChat.conversation_id)
-      ) {
+  const handleReceiveMessage = useCallback(
+    (data) => {
+      if (String(data.conversation_id) === String(conversationId)) {
         setMessages((prev) => [
           ...prev,
           {
@@ -246,56 +170,121 @@ export default function ChatDetail() {
           },
         ]);
       }
-    };
+    },
+    [conversationId, currentUser?.id]
+  );
 
-    const handleReadUpdate = (data) => {
-      console.log("message_read_update", data); // debug!
+  const handleReadUpdate = useCallback(
+    (data) => {
+      if (String(data.conversation_id) !== String(conversationId)) {
+        return;
+      }
       setMessages((msgs) =>
         msgs.map((m) => {
           if (m.message_id === data.message_id) {
-            // Zaten aynı ise tekrar state set etme
-            if (JSON.stringify(m.read_by) === JSON.stringify(data.read_by))
+            if (JSON.stringify(m.read_by) === JSON.stringify(data.read_by)) {
               return m;
+            }
             return { ...m, read_by: data.read_by };
           }
           return m;
         })
       );
-    };
+    },
+    [conversationId, currentUser?.id]
+  );
 
-    const handleTyping = (data) => {
+  const handleTyping = useCallback(
+    (data) => {
       if (
-        String(selectedChat.user.id) === String(data.sender_id) &&
-        String(data.conversation_id) === String(selectedChat.conversation_id) &&
+        String(selectedChat?.user?.id) === String(data.sender_id) &&
+        String(data.conversation_id) === String(conversationId) &&
         String(data.sender_id) !== String(currentUser.id)
       ) {
         setTypingVisible(true);
         setTimeout(() => setTypingVisible(false), 2000);
       }
+    },
+    [conversationId, currentUser?.id, selectedChat]
+  );
+
+  useEffect(() => {
+    if (!socket || !currentUser?.id) {
+      setIsSocketReady(false);
+      return;
+    }
+
+    const onConnect = () => {
+      // console.log("Socket connected.");
+      setIsSocketReady(true);
     };
 
+    const onDisconnect = () => {
+      // console.log("Socket disconnected.");
+      setIsSocketReady(false);
+    };
+
+    if (socket.connected) {
+      onConnect();
+    } else {
+      socket.on("connect", onConnect);
+    }
+    socket.on("disconnect", onDisconnect);
     socket.on("receive_message", handleReceiveMessage);
     socket.on("message_read_update", handleReadUpdate);
     socket.on("typing", handleTyping);
 
     return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
       socket.off("receive_message", handleReceiveMessage);
       socket.off("message_read_update", handleReadUpdate);
       socket.off("typing", handleTyping);
     };
-  }, [socket, currentUser?.id, selectedChat]);
+  }, [
+    socket,
+    currentUser?.id,
+    handleReceiveMessage,
+    handleReadUpdate,
+    handleTyping,
+  ]);
 
   useEffect(() => {
-    if (!socket || !selectedChat) return;
-    // Sadece aktif peer ayarı gelirse güncelle
-    const handlePeerSettings = (data) => {
-      if (String(selectedChat.user.id) === String(data.user_id)) {
-        setPeerReadReceiptEnabled(data.read_receipt_enabled !== 1);
+    if (!selectedChat || !isSocketReady) return;
+
+    const fetchMessagesAndMarkRead = async () => {
+      try {
+        const res = await api.get(`/conversations/${conversationId}/messages`);
+        const messageList = (res.data || []).map((msg) => ({
+          ...msg,
+          from_me: String(msg.sender_id) === String(currentUser.id),
+          message_id: msg.id,
+          read_by: msg.read_by || [],
+        }));
+        setMessages(messageList);
+
+        const unreadMsgIds = messageList
+          .filter(
+            (msg) =>
+              !msg.from_me && !(msg.read_by || []).includes(currentUser.id)
+          )
+          .map((msg) => msg.message_id);
+
+        if (unreadMsgIds.length > 0) {
+          console.log(
+            "📖 Marking initial unread messages as read:",
+            unreadMsgIds
+          );
+          api
+            .post("/conversations/mark_as_read", { message_ids: unreadMsgIds })
+            .catch((err) => console.error("❌ Mark as read API error:", err));
+        }
+      } catch (err) {
+        console.error("❌ Failed to fetch messages:", err);
       }
     };
-    socket.on("user_settings_updated", handlePeerSettings);
-    return () => socket.off("user_settings_updated", handlePeerSettings);
-  }, [socket, selectedChat]);
+    fetchMessagesAndMarkRead();
+  }, [conversationId, selectedChat, currentUser?.id, isSocketReady]);
 
   // Otomatik scroll
   useEffect(() => {
@@ -314,15 +303,25 @@ export default function ChatDetail() {
     }
   };
 
-  // MESAJ GÖNDER
-  const sendMessage = async () => {
+  // Yeni mesaj gönderme işlevi
+  const handleSendMessage = async (e) => {
+    // Tarayıcının varsayılan form gönderme davranışını engelle
+    e.preventDefault();
     if (!newMessage.trim() || !selectedChat) return;
+
+    // Mesajı gönderme ve input temizliği
+    const messageToSend = newMessage.trim();
     setNewMessage("");
+
     try {
       await api.post(`/conversations/${String(conversationId)}/messages`, {
-        content: newMessage.trim(),
+        content: messageToSend,
       });
-    } catch (err) {}
+    } catch (err) {
+      console.error("❌ Mesaj gönderme hatası:", err);
+      toast.error(t("Failed to send message", "Mesaj gönderilemedi"));
+      setNewMessage(messageToSend);
+    }
   };
 
   if (!selectedChat) {
@@ -345,7 +344,7 @@ export default function ChatDetail() {
         overflow: "hidden",
       }}
     >
-      {/* HEADER */}
+      {/* header */}
       <div
         style={{
           padding: "0 24px",
@@ -436,7 +435,7 @@ export default function ChatDetail() {
         </div>
       </div>
 
-      {/* MESSAGES */}
+      {/* mesajlar */}
       <div
         style={{
           flex: 1,
@@ -480,13 +479,11 @@ export default function ChatDetail() {
                 position: "relative",
               }}
             >
-              {/* Önce tüm satırlar (son hariç) */}
               {allButLast && (
                 <span style={{ display: "block", whiteSpace: "pre-line" }}>
                   {allButLast}
                 </span>
               )}
-              {/* Son satır + meta */}
               <span
                 style={{
                   display: "flex",
@@ -495,7 +492,6 @@ export default function ChatDetail() {
                   flexWrap: "nowrap",
                 }}
               >
-                {/* Son satırı taşıyan span */}
                 <span
                   style={{
                     whiteSpace: "pre-line",
@@ -522,16 +518,9 @@ export default function ChatDetail() {
                   }}
                 >
                   <span>{formatDate(msg.timestamp)}</span>
-                  {/* <-- BURASI: DoubleTick --> */}
-
-                  {msg.from_me ? (
-                    <DoubleTick
-                      read_by={msg.read_by}
-                      peerId={peerId}
-                      peerReadReceiptEnabled={peerReadReceiptEnabled}
-                      myReadReceiptEnabled={myReadReceiptEnabled}
-                    />
-                  ) : null}
+                  {msg.from_me && (
+                    <DoubleTick read_by={msg.read_by} peerId={peerId} />
+                  )}
                 </span>
               </span>
             </div>
@@ -558,8 +547,9 @@ export default function ChatDetail() {
         <div ref={messageEndRef} />
       </div>
 
-      {/* FOOTER */}
-      <div
+      {/* fooTer */}
+      <form
+        onSubmit={handleSendMessage}
         style={{
           display: "flex",
           borderTop: "1px solid #23293a",
@@ -570,6 +560,7 @@ export default function ChatDetail() {
         }}
       >
         <button
+          type="button"
           style={{
             background: "none",
             border: "none",
@@ -611,11 +602,9 @@ export default function ChatDetail() {
           value={newMessage}
           onChange={handleInputChange}
           placeholder={t("Type something...", "Bir şeyler yaz...")}
-          onKeyUp={(e) => {
-            if (e.key === "Enter") sendMessage();
-          }}
         />
         <button
+          type="submit"
           style={{
             marginLeft: 8,
             padding: "0 28px",
@@ -630,12 +619,11 @@ export default function ChatDetail() {
             boxShadow: "0 1px 10px #2862c166",
             transition: "background .19s, box-shadow .19s",
           }}
-          onClick={sendMessage}
           disabled={!newMessage.trim()}
         >
           {t("Send", "Gönder")}
         </button>
-      </div>
+      </form>
     </div>
   );
 }

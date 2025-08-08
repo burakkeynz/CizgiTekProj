@@ -169,37 +169,6 @@ function App() {
     }
   }, [hasSession]);
 
-  //deniyorum
-  useEffect(() => {
-    if (!socket) return;
-    const handlePeerSettings = (data) => {
-      // Peer ise conversations’da güncelle
-      setConversations((prev) =>
-        prev.map((conv) =>
-          conv.user && conv.user.id === data.user_id
-            ? {
-                ...conv,
-                user: {
-                  ...conv.user,
-                  read_receipt_enabled: data.read_receipt_enabled,
-                },
-              }
-            : conv
-        )
-      );
-      // Kendi ayarımız ise global user’ı güncelle
-      if (user && user.id === data.user_id) {
-        setUser((prev) =>
-          prev
-            ? { ...prev, read_receipt_enabled: data.read_receipt_enabled }
-            : prev
-        );
-      }
-    };
-    socket.on("user_settings_updated", handlePeerSettings);
-    return () => socket.off("user_settings_updated", handlePeerSettings);
-  }, [socket, setConversations, setUser, user]);
-
   //Şimdi ekliyorum
   useEffect(() => {
     if (!socket) return;
@@ -325,10 +294,7 @@ function App() {
               }
             />
           </Route>
-          <Route
-            path="/settings"
-            element={<Settings user={user} setUser={setUser} />}
-          />
+          <Route path="/settings" element={<Settings />} />
           <Route
             path="/logs"
             element={<Logs logs={logs} onDelete={handleDelete} />}

@@ -131,7 +131,6 @@ def get_my_conversations(
                 "name": name,
                 "profile_picture_url": other_user.profile_picture_url,
                 "status": other_user.status,
-                "read_receipt_enabled": other_user.read_receipt_enabled,
             },
             "last_message": {
                 "from_me": last_msg.sender_id == user_id if last_msg else False,
@@ -325,22 +324,38 @@ async def mark_messages_as_read(
     user_id = current_user["id"]
     now = datetime.now()
     updated_conversation_ids = set()
+    message_updates = []  # Hangi mesajların okunduğunu track edelim
+    
     for msg_id in payload.message_ids:
         msg = db.query(UserChatMessage).filter_by(id=msg_id).first()
         if msg:
             updated_conversation_ids.add(msg.conversation_id)
+        
         exists = db.query(UserMessageRead).filter_by(
             user_id=user_id, message_id=msg_id
         ).first()
+        
         if not exists:
             db.add(UserMessageRead(user_id=user_id, message_id=msg_id, read_at=now))
+            
+            # Bu mesajın güncel read_by listesini al
+            if msg:
+                all_reads = db.query(UserMessageRead).filter_by(message_id=msg_id).all()
+                read_by_users = [r.user_id for r in all_reads] + [user_id]  # Yeni okuyanı da ekle
+                message_updates.append({
+                    "message_id": msg_id,
+                    "conversation_id": msg.conversation_id,
+                    "sender_id": msg.sender_id,
+                    "read_by": read_by_users
+                })
+    
     db.commit()
 
+    # Her conversation için unread count güncellemesi
     for convo_id in updated_conversation_ids:
         sid = globals_mod.connected_users.get(str(user_id))
         if sid and globals_mod.sio:
             unread_count = get_unread_count(db, convo_id, user_id)
-            # Kullanıcıya badge update
             await globals_mod.sio.emit(
                 "unread_count_update",
                 {
@@ -350,6 +365,20 @@ async def mark_messages_as_read(
                 },
                 to=sid,
             )
+
+    for update in message_updates:
+        sender_sid = globals_mod.connected_users.get(str(update["sender_id"]))
+        if sender_sid and globals_mod.sio:
+            await globals_mod.sio.emit(
+                "message_read_update",
+                {
+                    "message_id": update["message_id"],
+                    "conversation_id": update["conversation_id"],
+                    "read_by": update["read_by"]
+                },
+                to=sender_sid
+            )
+
     return {"success": True, "marked": payload.message_ids}
 
 @router.delete("/{conversation_id}", status_code=204)
