@@ -7,7 +7,15 @@ import { useTheme } from "./ThemeContext";
 import FilePreviewModal from "./FilePreviewModal";
 import { MessageList } from "@chatscope/chat-ui-kit-react";
 
+//yeni importlarım, mic ile kaydetme için
+import { FiMic, FiStopCircle } from "react-icons/fi";
+import { startStreamRecording } from "../utils/webrtc";
+
 const SESSION_KEY = "ai_assistang_logs:";
+const AUDIO_EXTS = [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".webm"];
+const isAudioLike = (f) =>
+  (f?.type || "").startsWith("audio/") ||
+  AUDIO_EXTS.some((ext) => f?.name?.toLowerCase()?.endsWith(ext));
 
 function DotLoader() {
   return (
@@ -85,6 +93,11 @@ function Assistant({ onNewLog }) {
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  //yeni statelerim kaydetme için
+  const [isRecording, setIsRecording] = useState(false);
+  const recRef = useRef(null);
+  const gumStreamRef = useRef(null);
+
   useEffect(() => {
     setIsOpen(false);
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
@@ -100,16 +113,13 @@ function Assistant({ onNewLog }) {
       const firstMsg = prevMessages[0];
       if (firstMsg.role !== "model") return prevMessages;
 
-      // Eğer ilk mesaj zaten doğruysa değişiklik yapma
       if (firstMsg.text === translated) return prevMessages;
 
-      // İlk mesajı değiştir, diğerlerine dokunma
       const updatedMessages = [
         { ...firstMsg, text: translated },
         ...prevMessages.slice(1),
       ];
 
-      // Session storage'ı da güncelle
       try {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(updatedMessages));
       } catch {}
@@ -184,6 +194,41 @@ function Assistant({ onNewLog }) {
     setIsOpen(false);
   };
 
+  async function micStart() {
+    try {
+      const gum = await navigator.mediaDevices.getUserMedia({ audio: true });
+      gumStreamRef.current = gum;
+      const { stop, filePromise } = startStreamRecording(gum);
+      recRef.current = { stop, filePromise };
+      setIsRecording(true);
+    } catch (e) {
+      console.error(e);
+      alert(
+        t(
+          "Microphone permission denied or unsupported.",
+          "Mikrofon izni reddedildi veya desteklenmiyor."
+        )
+      );
+    }
+  }
+
+  async function micStop() {
+    try {
+      recRef.current?.stop?.();
+      const file = await recRef.current?.filePromise;
+      if (file) {
+        setSelectedFiles((prev) => [...prev, file]);
+      }
+    } catch (e) {
+      console.error("micStop error:", e);
+    } finally {
+      gumStreamRef.current?.getTracks?.().forEach((tr) => tr.stop());
+      gumStreamRef.current = null;
+      recRef.current = null;
+      setIsRecording(false);
+    }
+  }
+
   const sendMessage = async () => {
     if (loading || (!input.trim() && selectedFiles.length === 0)) return;
     setLoading(true);
@@ -212,11 +257,21 @@ function Assistant({ onNewLog }) {
       }
     }
 
+    const audioFiles = uploadedFiles.filter(isAudioLike);
+    const otherFiles = uploadedFiles.filter((f) => !isAudioLike(f));
+    const hasAudio = audioFiles.length > 0;
+
     const userMsg = { role: "user", text: input, files: uploadedFiles };
     const allMsgs = [...messages, userMsg];
     setMessages([
       ...allMsgs,
-      { role: "model", text: "", isLoader: true, files: uploadedFiles },
+      {
+        role: "model",
+        text: "",
+        isLoader: true,
+        files: uploadedFiles,
+        isAudio: hasAudio,
+      },
     ]);
     setInput("");
     setSelectedFiles([]);
@@ -224,14 +279,27 @@ function Assistant({ onNewLog }) {
 
     try {
       const formData = new FormData();
-      formData.append("message", input || "");
-      if (uploadedFiles.length > 0)
-        uploadedFiles.forEach((file) => formData.append("files", file.url));
-      formData.append("web_search", activeTool === "search" ? "true" : "false");
-      formData.append("contents", JSON.stringify(allMsgs));
-
       const BASE_URL = process.env.REACT_APP_API_URL;
-      const response = await fetch(`${BASE_URL}/gemini/chat/stream`, {
+
+      if (hasAudio && otherFiles.length === 0) {
+        formData.append(
+          "prompt",
+          input?.trim() ? input : "Generate a transcript of the speech."
+        );
+        audioFiles.forEach((file) => formData.append("files", file.url));
+        var endpoint = "/gemini/audio/transcribe";
+      } else {
+        formData.append("message", input || "");
+        uploadedFiles.forEach((file) => formData.append("files", file.url));
+        formData.append(
+          "web_search",
+          activeTool === "search" ? "true" : "false"
+        );
+        formData.append("contents", JSON.stringify(allMsgs));
+        var endpoint = "/gemini/chat/stream";
+      }
+
+      const response = await fetch(`${BASE_URL}${endpoint}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -344,6 +412,19 @@ function Assistant({ onNewLog }) {
   }
 
   function renderLoader(msg) {
+    if (msg.isAudio) {
+      return (
+        <span
+          style={{
+            fontSize: 16,
+            color: "var(--ai-assistant-loader)",
+            fontWeight: 500,
+          }}
+        >
+          {t("Transcribing audio...", "Ses çözümleniyor...")}
+        </span>
+      );
+    }
     if (msg.isLoader && (!msg.text || msg.text.trim() === "")) {
       if (msg.files && msg.files.length > 0) {
         const label =
@@ -632,6 +713,7 @@ function Assistant({ onNewLog }) {
               type="file"
               multiple
               style={{ display: "none" }}
+              accept="audio/*,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               onChange={(e) => {
                 const files = Array.from(e.target.files);
                 setSelectedFiles((prev) => {
@@ -709,29 +791,67 @@ function Assistant({ onNewLog }) {
             ))}
           </div>
         )}
+        <div style={{ position: "relative", marginBottom: 8 }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            disabled={loading && !isRecording} // kayıt sürerken mici durdurabilelim
+            placeholder={t("Ask Assistant...", "Asistana sor...")}
+            rows={2}
+            style={{
+              width: "100%",
+              resize: "none",
+              borderRadius: 8,
+              padding: "10px 12px",
+              paddingRight: 48,
+              border: "1.5px solid var(--input-border)",
+              fontSize: 14,
+              background: "var(--input-bg)",
+              color: "var(--text-main)",
+              fontFamily: "inherit",
+              boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
+              transition: "all 0.18s",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => (isRecording ? micStop() : micStart())}
+            aria-label={
+              isRecording
+                ? t("Stop recording", "Kaydı durdur")
+                : t("Start recording", "Kaydı başlat")
+            }
+            title={
+              isRecording
+                ? t("Stop recording", "Kaydı durdur")
+                : t("Start recording", "Kaydı başlat")
+            }
+            disabled={loading && !isRecording}
+            style={{
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              border: "1px solid var(--input-border)",
+              background: isRecording ? "#ffefef" : "var(--card-bg)",
+              color: isRecording ? "#d00" : "var(--text-main)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(0,0,0,.05)",
+              zIndex: 2,
+              transition: "all .15s",
+            }}
+          >
+            {isRecording ? <FiStopCircle size={16} /> : <FiMic size={16} />}
+          </button>
+        </div>
 
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          disabled={loading}
-          placeholder={t("Ask Assistant...", "Asistana sor...")}
-          rows={2}
-          style={{
-            width: "100%",
-            resize: "none",
-            borderRadius: 8,
-            padding: "10px 12px",
-            border: "1.5px solid var(--input-border)",
-            fontSize: 14,
-            marginBottom: 8,
-            background: "var(--input-bg)",
-            color: "var(--text-main)",
-            fontFamily: "inherit",
-            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.05)",
-            transition: "all 0.18s",
-          }}
-        />
         <div
           style={{
             display: "flex",
