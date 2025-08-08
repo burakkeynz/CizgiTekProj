@@ -16,7 +16,7 @@ class Users(Base):
   role= Column(String(length=50))
   status = Column(String(length=20), default="offline")
   profile_picture_url = Column(String(length=500), nullable=True)
-  read_receipt_enabled = Column(Boolean, default=True, nullable=False) #7 Ağustos günü eklendi
+  #read_receipt_enabled buradan çıkarıldı, alembic downgrade yapıldı
 
 #6 Ağustos 2025 tarihinde eklendi
 class UserMessageRead(Base):
