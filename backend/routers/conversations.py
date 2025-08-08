@@ -315,6 +315,43 @@ def start_conversation(
 
     return {"conversation_id": convo.id}
 
+
+@router.post("/mark_as_read")
+async def mark_messages_as_read(
+    payload: MarkReadRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_from_cookie)
+):
+    user_id = current_user["id"]
+    now = datetime.now()
+    updated_conversation_ids = set()
+    for msg_id in payload.message_ids:
+        msg = db.query(UserChatMessage).filter_by(id=msg_id).first()
+        if msg:
+            updated_conversation_ids.add(msg.conversation_id)
+        exists = db.query(UserMessageRead).filter_by(
+            user_id=user_id, message_id=msg_id
+        ).first()
+        if not exists:
+            db.add(UserMessageRead(user_id=user_id, message_id=msg_id, read_at=now))
+    db.commit()
+
+    for convo_id in updated_conversation_ids:
+        sid = globals_mod.connected_users.get(str(user_id))
+        if sid and globals_mod.sio:
+            unread_count = get_unread_count(db, convo_id, user_id)
+            # Kullanıcıya badge update
+            await globals_mod.sio.emit(
+                "unread_count_update",
+                {
+                    "conversation_id": convo_id,
+                    "user_id": user_id,
+                    "unread_count": unread_count,
+                },
+                to=sid,
+            )
+    return {"success": True, "marked": payload.message_ids}
+
 @router.delete("/{conversation_id}", status_code=204)
 def soft_delete_conversation(
     conversation_id: int,
@@ -332,67 +369,3 @@ def soft_delete_conversation(
     link.cleared_at = datetime.now()
     db.commit()
     return JSONResponse(status_code=204, content=None)
-
-@router.post("/mark_as_read")
-async def mark_messages_as_read(
-    payload: MarkReadRequest,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_from_cookie)
-):
-    user_id = current_user["id"]
-    now = datetime.now()
-    updated_conversation_ids = set()
-    affected_messages = []
-
-    for msg_id in payload.message_ids:
-        msg = db.query(UserChatMessage).filter_by(id=msg_id).first()
-        if msg:
-            updated_conversation_ids.add(msg.conversation_id)
-            exists = db.query(UserMessageRead).filter_by(
-                user_id=user_id, message_id=msg_id
-            ).first()
-            if not exists:
-                db.add(UserMessageRead(user_id=user_id, message_id=msg_id, read_at=now))
-                affected_messages.append((msg.conversation_id, msg_id))
-    db.commit()
-
-    for convo_id, msg_id in affected_messages:
-        convo = db.query(UserConversation).filter_by(id=convo_id).first()
-        peer_id = convo.user2_id if convo.user1_id == user_id else convo.user1_id
-        peer_obj = db.query(Users).filter(Users.id == peer_id).first()
-        peer_sid = globals_mod.connected_users.get(str(peer_id))
-
-        read_by_users = [
-            r.user_id for r in db.query(UserMessageRead).filter_by(message_id=msg_id).all()
-        ]
-        print("EMITTING message_read_update:", convo_id, msg_id, read_by_users)
-
-
-        if peer_obj and peer_obj.read_receipt_enabled and peer_sid and globals_mod.sio:
-            user_obj = db.query(Users).filter(Users.id == user_id).first()
-            await globals_mod.sio.emit(
-                "message_read_update",
-                {
-                    "conversation_id": convo_id,
-                    "message_id": msg_id,
-                    "read_by": read_by_users,
-                    "peer_read_receipt_enabled": peer_obj.read_receipt_enabled,
-                    "my_read_receipt_enabled": user_obj.read_receipt_enabled if user_obj else True,
-                },
-                to=peer_sid
-            )
-
-    for convo_id in updated_conversation_ids:
-        sid = globals_mod.connected_users.get(str(user_id))
-        if sid and globals_mod.sio:
-            unread_count = get_unread_count(db, convo_id, user_id)
-            await globals_mod.sio.emit(
-                "unread_count_update",
-                {
-                    "conversation_id": convo_id,
-                    "user_id": user_id,
-                    "unread_count": unread_count,
-                },
-                to=sid,
-            )
-    return {"success": True, "marked": payload.message_ids}

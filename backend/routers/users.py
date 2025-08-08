@@ -34,85 +34,11 @@ class UserVerification(BaseModel):
 class StatusUpdateRequest(BaseModel):
     status: str  # "online", "offline", "meşgul", "aramada"
 
-class UserSettingsUpdate(BaseModel):
-    read_receipt_enabled: Optional[int] = None 
-
-# @router.get('/me', status_code=status.HTTP_200_OK)
-# async def get_me(user: user_dependency, db: db_dependency):
-#     print("[GET /users/me] user dep:", user)
-#     if user is None:
-#         print("[GET /users/me] => user=None")
-#         raise HTTPException(status_code=401, detail='Auth Failed')
-#     user_obj = db.query(Users).filter(Users.id == user.get('id')).first()
-#     if not user_obj:
-#         print("[GET /users/me] => user_obj not found")
-#         raise HTTPException(status_code=404, detail='User not found')
-
-#     print(f"[GET /users/me] DB row: id={user_obj.id} read_receipt_enabled={user_obj.read_receipt_enabled} type={type(user_obj.read_receipt_enabled)}")
-#     read_receipt = bool(user_obj.read_receipt_enabled)
-#     if read_receipt is None:
-#         print("[GET /users/me] read_receipt_enabled is NULL, forcing 1")
-#         read_receipt = 1
-
-#     print(f"[GET /users/me] FINAL VALUE: {read_receipt} (type={type(read_receipt)})")
-
-#     result = {
-#         "id": user_obj.id,
-#         "username": user_obj.username,
-#         "first_name": user_obj.first_name,
-#         "last_name": user_obj.last_name,
-#         "role": user_obj.role,
-#         "status": user_obj.status,
-#         "profile_picture_url": user_obj.profile_picture_url,
-#         "read_receipt_enabled": read_receipt
-#     }
-#     print(f"[GET /users/me] Response: {result}")
-#     return result
-
-
-@router.put('/me', status_code=200)
-async def update_me(
-    user: user_dependency,
-    db: db_dependency,
-    payload: UserSettingsUpdate
-):
-    print("[PUT /users/me] GİRİLDİ. user:", user)
-    print("[PUT /users/me] PAYLOAD:", payload.dict())
+@router.get('/get_user', status_code=status.HTTP_200_OK)
+async def get_user(user: user_dependency, db: db_dependency):
     if user is None:
-        print("[PUT /users/me] => Not authenticated")
-        raise HTTPException(status_code=401, detail='Not authenticated')
-    user_model = db.query(Users).filter(Users.id == user["id"]).first()
-    if not user_model:
-        print("[PUT /users/me] => User not found")
-        raise HTTPException(status_code=404, detail='User not found')
-
-    # Sadece int 0 veya 1 kaydet!
-    if payload.read_receipt_enabled is not None:
-        print("[PUT /users/me] AYARLANIYOR:", payload.read_receipt_enabled)
-        user_model.read_receipt_enabled = 0 if payload.read_receipt_enabled == 0 else 1
-
-    db.commit()
-    db.refresh(user_model)
-
-    print(f"[PUT /users/me] KAYIT EDİLDİ: {user_model.read_receipt_enabled} (type: {type(user_model.read_receipt_enabled)})")
-
-    for uid, sid in globals_mod.connected_users.items():
-        if str(uid) != str(user_model.id):
-            await globals_mod.sio.emit(
-                "user_settings_updated",
-                {
-                    "user_id": user_model.id,
-                    "read_receipt_enabled": user_model.read_receipt_enabled
-                },
-                to=sid
-            )
-
-    print(f"[PUT /users/me] RESPONSE: {{'id': {user_model.id}, 'read_receipt_enabled': {user_model.read_receipt_enabled}}}")
-
-    return {
-        "id": user_model.id,
-        "read_receipt_enabled": user_model.read_receipt_enabled
-    }
+        raise HTTPException(status_code=401, detail='Auth Failed')
+    return db.query(Users).filter(Users.id == user.get('id')).first()
 
 
 @router.put('/change_password', status_code=status.HTTP_204_NO_CONTENT)

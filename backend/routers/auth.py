@@ -131,7 +131,6 @@ async def get_me(
         "id": db_user.id,
         "expires_in": expires_in,
         "status": db_user.status,
-        "read_receipt_enabled": db_user.read_receipt_enabled,
     }
 
 
