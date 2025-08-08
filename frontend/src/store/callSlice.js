@@ -23,6 +23,7 @@ const callSlice = createSlice({
       state.incoming = null;
       state.isStarter = true;
       state.chat_id = action.payload.chat_id ?? null;
+      state.camOn = action.payload.type === "video";
     },
     receiveCall: (state, action) => {
       console.log(
@@ -35,6 +36,7 @@ const callSlice = createSlice({
       state.peerUser = action.payload.from_user || null;
       state.isStarter = false;
       state.chat_id = action.payload.chat_id ?? null;
+      state.camOn = action.payload.call_type === "video";
     },
     answerCall: (state) => {
       console.log("[DEBUG][SLICE][answerCall] state:", state);

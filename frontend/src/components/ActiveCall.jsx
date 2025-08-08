@@ -12,6 +12,22 @@ import { useLanguage } from "./LanguageContext";
 import { useNavigate } from "react-router-dom";
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiX } from "react-icons/fi";
 import api from "../api";
+const publicUser = (u = {}) => {
+  const emailLocal = typeof u.email === "string" ? u.email.split("@")[0] : null;
+  return {
+    id: u.id ?? null,
+    first_name: u.first_name ?? null,
+    username: u.username ?? null,
+    name:
+      u.name ??
+      u.display_name ??
+      u.full_name ??
+      emailLocal ??
+      (u.id ? String(u.id) : null),
+    profile_picture_url:
+      u.profile_picture_url ?? u.avatar_url ?? u.avatar ?? u.photo_url ?? null,
+  };
+};
 
 function iconBtn(bg, color) {
   return {
@@ -32,21 +48,98 @@ function iconBtn(bg, color) {
   };
 }
 
-function cleanupAll(localVideoRef, remoteVideoRef, localStreamRef) {
+const nameOf = (u) => {
+  if (!u) return "?";
+  const emailLocal = typeof u.email === "string" ? u.email.split("@")[0] : null;
+  const cand =
+    u.first_name ||
+    u.name ||
+    u.display_name ||
+    u.full_name ||
+    u.username ||
+    emailLocal ||
+    (u.id ? String(u.id) : "");
+  const s = (cand || "").toString().trim();
+  return s || "?";
+};
+
+function AvatarBubble({ user, size = 116 }) {
+  const name = nameOf(user);
+  const letter = name?.[0]?.toUpperCase() || "?";
+  const url = user?.profile_picture_url;
+
+  // SABIT (dark) tema renkleri
+  const ring = "#2f3a55";
+  const bg = "#0f1625";
+  const letterColor = "#cfe0ff";
+
+  return (
+    <div
+      title={name}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        border: `3px solid ${ring}`,
+        background: bg,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 2px 12px rgba(0,0,0,.35)",
+        overflow: "hidden",
+      }}
+    >
+      {url ? (
+        <img
+          src={url}
+          alt={name}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <span
+          style={{
+            color: letterColor,
+            fontWeight: 800,
+            fontSize: size * 0.44,
+            lineHeight: 1,
+            userSelect: "none",
+          }}
+        >
+          {letter}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function cleanupAll(
+  localVideoRef,
+  remoteVideoRef,
+  localStreamRef,
+  remoteAudioRef
+) {
   if (localStreamRef.current) {
-    localStreamRef.current.getTracks().forEach((track) => {
+    localStreamRef.current.getTracks().forEach((t) => {
       try {
-        track.stop();
+        t.stop();
       } catch {}
     });
     localStreamRef.current = null;
   }
-  [localVideoRef, remoteVideoRef].forEach((ref) => {
-    if (ref.current) {
-      ref.current.pause();
-      ref.current.srcObject = null;
+  [localVideoRef, remoteVideoRef].forEach((r) => {
+    if (r?.current) {
+      try {
+        r.current.pause?.();
+      } catch {}
+      r.current.srcObject = null;
     }
   });
+  if (remoteAudioRef?.current) {
+    try {
+      remoteAudioRef.current.pause?.();
+    } catch {}
+    remoteAudioRef.current.srcObject = null;
+  }
 }
 
 export default function ActiveCall({
@@ -56,14 +149,19 @@ export default function ActiveCall({
   onMinimize,
   minimized,
 }) {
-  const callState = useSelector((state) => state.call);
-  const { peerUser, callType, isStarter, incoming, chat_id } = callState;
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
   const { language } = useLanguage();
   const t = (en, tr) => (language === "tr" ? tr : en);
-  const localVideoRef = useRef();
-  const remoteVideoRef = useRef();
+
+  const { peerUser, callType, isStarter, incoming, chat_id } = useSelector(
+    (s) => s.call
+  );
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
+
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
@@ -96,7 +194,7 @@ export default function ActiveCall({
       } catch {}
       peerConnectionRef.current = null;
     }
-    cleanupAll(localVideoRef, remoteVideoRef, localStreamRef);
+    cleanupAll(localVideoRef, remoteVideoRef, localStreamRef, remoteAudioRef);
   }
 
   useEffect(() => {
@@ -115,6 +213,7 @@ export default function ActiveCall({
     return () => socket.off("webrtc_call_end", handleCallEnd);
   }, [socket, dispatch, chat_id, navigate, setUser, currentUser.id]);
 
+  // WebRTC setup
   useEffect(() => {
     let ignore = false;
     let cleanupSocket = () => {};
@@ -126,8 +225,12 @@ export default function ActiveCall({
           audio: true,
         });
         if (ignore) return;
+
         localStreamRef.current = localStream;
-        bindStreamToVideo(localVideoRef.current, localStream);
+
+        if (callType === "video" && localVideoRef.current) {
+          bindStreamToVideo(localVideoRef.current, localStream);
+        }
 
         const pc = createPeerConnection({
           onIceCandidate: (candidate) => {
@@ -142,10 +245,14 @@ export default function ActiveCall({
             remoteStreamRef.current = remoteStream;
             setPeerConnected(true);
             setTimeout(() => {
-              if (remoteVideoRef.current) {
+              if (callType === "video" && remoteVideoRef.current) {
                 bindStreamToVideo(remoteVideoRef.current, remoteStream);
               }
-            }, 100);
+              if (callType === "audio" && remoteAudioRef.current) {
+                remoteAudioRef.current.srcObject = remoteStream;
+                remoteAudioRef.current.play?.();
+              }
+            }, 80);
           },
           getLocalStream: () => localStreamRef.current,
         });
@@ -174,11 +281,12 @@ export default function ActiveCall({
           addLocalTracks(pc, localStream);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
+
           socket.emit("webrtc_offer", {
             from_user_id: currentUser.id,
-            from_user: { id: currentUser.id, name: currentUser.name },
             to_user_id: peerUser?.id,
-            to_user: peerUser,
+            from_user: publicUser(currentUser),
+            to_user: publicUser(peerUser),
             sdp: offer.sdp,
             call_type: callType,
             chat_id,
@@ -221,7 +329,7 @@ export default function ActiveCall({
           socket.off("webrtc_answer");
           socket.off("webrtc_ice_candidate");
         };
-      } catch (err) {
+      } catch {
         cleanupMedia();
         dispatch(endCall());
         if (chat_id) {
@@ -249,10 +357,22 @@ export default function ActiveCall({
   ]);
 
   useEffect(() => {
-    if (peerConnected && remoteStreamRef.current && remoteVideoRef.current) {
+    if (!peerConnected) return;
+    if (
+      callType === "video" &&
+      remoteStreamRef.current &&
+      remoteVideoRef.current
+    ) {
       bindStreamToVideo(remoteVideoRef.current, remoteStreamRef.current);
+    } else if (
+      callType === "audio" &&
+      remoteStreamRef.current &&
+      remoteAudioRef.current
+    ) {
+      remoteAudioRef.current.srcObject = remoteStreamRef.current;
+      remoteAudioRef.current.play?.();
     }
-  }, [peerConnected]);
+  }, [peerConnected, callType]);
 
   const handleToggleMic = () => {
     setMicOn((prev) => {
@@ -292,16 +412,20 @@ export default function ActiveCall({
     }
   };
 
+  // SABIT (dark) panel görseli
+  const panelBg = "linear-gradient(135deg, #23273c 84%, #262d43 100%)";
+  const panelBorder = "#2d3343";
+
   return (
     <div
       style={{
-        background: "linear-gradient(135deg, #23273c 84%, #262d43 100%)",
+        background: panelBg,
         borderTopLeftRadius: 12,
         borderTopRightRadius: 12,
         borderBottomLeftRadius: 0,
         borderBottomRightRadius: 0,
         boxShadow: "0 8px 32px #0007",
-        border: "1.5px solid #2d3343",
+        border: `1.5px solid ${panelBorder}`,
         borderBottom: "2px solid #3a4153",
         padding: "26px 34px 18px 34px",
         display: "flex",
@@ -330,7 +454,7 @@ export default function ActiveCall({
             fontSize: 19,
             fontWeight: 700,
             cursor: "pointer",
-            opacity: 0.8,
+            opacity: 0.9,
             zIndex: 20,
             transition: "background .13s",
           }}
@@ -341,88 +465,112 @@ export default function ActiveCall({
         </button>
       )}
 
-      <div
-        style={{
-          width: "100%",
-          display: "flex",
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 34,
-          position: "relative",
-        }}
-      >
+      {/* MEDIA */}
+      {callType === "video" ? (
         <div
           style={{
-            background: "#161b25",
-            borderRadius: 8,
-            width: 168,
-            height: 126,
+            width: "100%",
             display: "flex",
+            flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            boxShadow: "0 1.5px 6px #0002",
+            gap: 34,
             position: "relative",
           }}
         >
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
+          <div
             style={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 6,
-              objectFit: "cover",
-              background: "#22263b",
+              background: "#161b25",
+              borderRadius: 8,
+              width: 168,
+              height: 126,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 1.5px 6px rgba(0,0,0,.2)",
+              position: "relative",
             }}
-          />
-        </div>
-        <div
-          style={{
-            background: "#161b25",
-            borderRadius: 8,
-            width: 168,
-            height: 126,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 1.5px 6px #0002",
-            position: "relative",
-          }}
-        >
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              borderRadius: 6,
-              objectFit: "cover",
-              background: "#22263b",
-              opacity: peerConnected ? 1 : 0,
-              transition: "opacity 0.2s",
-            }}
-          />
-          {!peerConnected && (
-            <span
+          >
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
               style={{
-                color: "#8ea0c6",
-                fontSize: 15,
-                position: "absolute",
-                left: 0,
-                right: 0,
-                textAlign: "center",
+                width: "100%",
+                height: "100%",
+                borderRadius: 6,
+                objectFit: "cover",
+                background: "#22263b",
               }}
-            >
-              {t("waiting_connection", "Ağ bağlantısı bekleniyor…")}
-            </span>
-          )}
-        </div>
-      </div>
+            />
+          </div>
 
+          <div
+            style={{
+              background: "#161b25",
+              borderRadius: 8,
+              width: 168,
+              height: 126,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 1.5px 6px rgba(0,0,0,.2)",
+              position: "relative",
+            }}
+          >
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: 6,
+                objectFit: "cover",
+                background: "#22263b",
+                opacity: peerConnected ? 1 : 0,
+                transition: "opacity 0.2s",
+              }}
+            />
+            {!peerConnected && (
+              <span
+                style={{
+                  color: "#8ea0c6",
+                  fontSize: 15,
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  textAlign: "center",
+                }}
+              >
+                {t("waiting_connection", "Ağ bağlantısı bekleniyor…")}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 42,
+          }}
+        >
+          <AvatarBubble user={publicUser(currentUser)} size={110} />
+          <AvatarBubble user={publicUser(peerUser)} size={110} />
+          <audio
+            ref={remoteAudioRef}
+            autoPlay
+            playsInline
+            style={{ display: "none" }}
+          />
+        </div>
+      )}
+
+      {/* KONTROLLER */}
       <div
         style={{
           marginTop: 18,
@@ -446,6 +594,7 @@ export default function ActiveCall({
         >
           {micOn ? <FiMic /> : <FiMicOff />}
         </button>
+
         {callType === "video" && (
           <button
             onClick={handleToggleCam}
@@ -462,6 +611,7 @@ export default function ActiveCall({
             {camOn ? <FiVideo /> : <FiVideoOff />}
           </button>
         )}
+
         <button
           onClick={handleEndCall}
           title={t("End call", "Görüşmeyi Bitir")}

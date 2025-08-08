@@ -54,11 +54,9 @@ export default function CallModal({ socket, currentUser, setUser }) {
         if (match) {
           id = match.conversation_id;
         } else {
-          const res = await api.post(
-            "/conversations/start_conversation",
-            null,
-            { params: { receiver_id: peerUser.id } }
-          );
+          const res = await api.post("/conversations/start_conversation", {
+            receiver_id: peerUser.id,
+          });
           id = res.data.conversation_id;
         }
         dispatch(setConversations(listRes.data));
@@ -73,13 +71,17 @@ export default function CallModal({ socket, currentUser, setUser }) {
       return;
     }
 
-    setUser?.((prev) => ({ ...prev, status: "in_call" }));
-    socket.emit("user_status", { user_id: currentUser.id, status: "in_call" });
     try {
+      dispatch(answerCall());
       await api.put("/users/update-status", { status: "in_call" });
-    } catch (err) {}
-
-    dispatch(answerCall());
+      socket.emit("user_status", {
+        user_id: currentUser.id,
+        status: "in_call",
+      });
+    } catch (err) {
+      alert(t("Something went wrong.", "Bir şeyler yanlış gitti."));
+      return;
+    }
     navigate(`/chat/${id}`);
   };
 

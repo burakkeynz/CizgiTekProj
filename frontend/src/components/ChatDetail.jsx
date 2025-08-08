@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { FiVideo, FiPhone, FiPaperclip } from "react-icons/fi";
+import { useSelector, useDispatch } from "react-redux";
+import { startCall } from "../store/callSlice";
 import { useLanguage } from "./LanguageContext";
 import { toast } from "react-toastify";
 import api from "../api";
@@ -89,14 +91,12 @@ function DotLoader() {
       <span className="dot">.</span>
       <span className="dot">.</span>
       <span className="dot">.</span>
-      <style>
-        {`
-          .dot { animation: blink 1.4s infinite both; font-size: 20px; color: #bbb;}
-          .dot:nth-child(2) { animation-delay: .2s; }
-          .dot:nth-child(3) { animation-delay: .4s; }
-          @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
-        `}
-      </style>
+      <style>{`
+        .dot { animation: blink 1.4s infinite both; font-size: 20px; color: #bbb;}
+        .dot:nth-child(2) { animation-delay: .2s; }
+        .dot:nth-child(3) { animation-delay: .4s; }
+        @keyframes blink { 0%{opacity:.1;} 20%{opacity:1;} 100%{opacity:.1;} }
+      `}</style>
     </span>
   );
 }
@@ -138,13 +138,27 @@ export default function ChatDetail() {
 
   const { conversationId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  // ---- Call state (Redux) & header visibility ----
+  const callState = useSelector((state) => state.call);
+  const { inCall, peerUser } = callState;
+  const [headerVisible, setHeaderVisible] = useState(!inCall);
+
+  useEffect(() => {
+    if (!inCall) {
+      const to = setTimeout(() => setHeaderVisible(true), 800);
+      return () => clearTimeout(to);
+    } else {
+      setHeaderVisible(false);
+    }
+  }, [inCall]);
 
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [typingVisible, setTypingVisible] = useState(false);
   const messageEndRef = useRef(null);
   const fileInputRef = useRef();
-
   const [isSocketReady, setIsSocketReady] = useState(false);
 
   const selectedChat = useMemo(() => {
@@ -155,6 +169,22 @@ export default function ChatDetail() {
 
   const peerId = selectedChat?.user?.id;
 
+  // Guard
+  useEffect(() => {
+    if (!currentUser || !currentUser.id || !conversationId) {
+      navigate("/chat", { replace: true });
+      return;
+    }
+    if (!socket || socket.disconnected) {
+      navigate("/chat", { replace: true });
+      return;
+    }
+    const onDisconnect = () => navigate("/chat", { replace: true });
+    socket.on("disconnect", onDisconnect);
+    return () => socket.off("disconnect", onDisconnect);
+  }, [currentUser, conversationId, socket, navigate]);
+
+  // socket handlers
   const handleReceiveMessage = useCallback(
     (data) => {
       if (String(data.conversation_id) === String(conversationId)) {
@@ -176,22 +206,17 @@ export default function ChatDetail() {
 
   const handleReadUpdate = useCallback(
     (data) => {
-      if (String(data.conversation_id) !== String(conversationId)) {
-        return;
-      }
+      if (String(data.conversation_id) !== String(conversationId)) return;
       setMessages((msgs) =>
-        msgs.map((m) => {
-          if (m.message_id === data.message_id) {
-            if (JSON.stringify(m.read_by) === JSON.stringify(data.read_by)) {
-              return m;
-            }
-            return { ...m, read_by: data.read_by };
-          }
-          return m;
-        })
+        msgs.map((m) =>
+          m.message_id === data.message_id &&
+          JSON.stringify(m.read_by) !== JSON.stringify(data.read_by)
+            ? { ...m, read_by: data.read_by }
+            : m
+        )
       );
     },
-    [conversationId, currentUser?.id]
+    [conversationId]
   );
 
   const handleTyping = useCallback(
@@ -213,22 +238,12 @@ export default function ChatDetail() {
       setIsSocketReady(false);
       return;
     }
+    const onConnect = () => setIsSocketReady(true);
+    const onDisconnect = () => setIsSocketReady(false);
 
-    const onConnect = () => {
-      // console.log("Socket connected.");
-      setIsSocketReady(true);
-    };
+    if (socket.connected) onConnect();
+    else socket.on("connect", onConnect);
 
-    const onDisconnect = () => {
-      // console.log("Socket disconnected.");
-      setIsSocketReady(false);
-    };
-
-    if (socket.connected) {
-      onConnect();
-    } else {
-      socket.on("connect", onConnect);
-    }
     socket.on("disconnect", onDisconnect);
     socket.on("receive_message", handleReceiveMessage);
     socket.on("message_read_update", handleReadUpdate);
@@ -251,47 +266,43 @@ export default function ChatDetail() {
 
   useEffect(() => {
     if (!selectedChat || !isSocketReady) return;
-
     const fetchMessagesAndMarkRead = async () => {
       try {
-        const res = await api.get(`/conversations/${conversationId}/messages`);
-        const messageList = (res.data || []).map((msg) => ({
+        const res = await api.get(
+          `/conversations/${String(conversationId)}/messages`
+        );
+        const list = (res.data || []).map((msg) => ({
           ...msg,
           from_me: String(msg.sender_id) === String(currentUser.id),
           message_id: msg.id,
           read_by: msg.read_by || [],
         }));
-        setMessages(messageList);
+        setMessages(list);
 
-        const unreadMsgIds = messageList
+        const unreadMsgIds = list
           .filter(
-            (msg) =>
-              !msg.from_me && !(msg.read_by || []).includes(currentUser.id)
+            (m) => !m.from_me && !(m.read_by || []).includes(currentUser.id)
           )
-          .map((msg) => msg.message_id);
+          .map((m) => m.message_id);
 
         if (unreadMsgIds.length > 0) {
-          console.log(
-            "📖 Marking initial unread messages as read:",
-            unreadMsgIds
-          );
-          api
-            .post("/conversations/mark_as_read", { message_ids: unreadMsgIds })
-            .catch((err) => console.error("❌ Mark as read API error:", err));
+          await api.post("/conversations/mark_as_read", {
+            message_ids: unreadMsgIds,
+          });
         }
       } catch (err) {
-        console.error("❌ Failed to fetch messages:", err);
+        console.log(err);
       }
     };
     fetchMessagesAndMarkRead();
   }, [conversationId, selectedChat, currentUser?.id, isSocketReady]);
 
-  // Otomatik scroll
+  // scroll
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingVisible]);
 
-  // Input typing emit
+  // typing emit
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
     if (socket && selectedChat) {
@@ -303,26 +314,65 @@ export default function ChatDetail() {
     }
   };
 
-  // Yeni mesaj gönderme işlevi
+  // mesaj gönder
   const handleSendMessage = async (e) => {
-    // Tarayıcının varsayılan form gönderme davranışını engelle
-    e.preventDefault();
+    e.preventDefault?.();
     if (!newMessage.trim() || !selectedChat) return;
-
-    // Mesajı gönderme ve input temizliği
-    const messageToSend = newMessage.trim();
+    const msg = newMessage.trim();
     setNewMessage("");
-
     try {
       await api.post(`/conversations/${String(conversationId)}/messages`, {
-        content: messageToSend,
+        content: msg,
       });
     } catch (err) {
-      console.error("❌ Mesaj gönderme hatası:", err);
-      toast.error(t("Failed to send message", "Mesaj gönderilemedi"));
-      setNewMessage(messageToSend);
+      // eski davranış: hata tostu atıp inputu geri doldurmuyoruz
     }
   };
+
+  // ==== ARAMA MANTIĞI (ESKİ KODLA BİREBİR) ====
+  function handleAudioCall() {
+    if (!selectedChat) return;
+
+    const status = selectedChat.user.status;
+    if (["offline", "busy", "in_call"].includes(status)) {
+      toast.warn(
+        t(
+          "User is not available for a call right now.",
+          "Kullanıcı şu anda arama için uygun değil."
+        )
+      );
+      return;
+    }
+
+    dispatch(startCall({ type: "audio", peerUser: selectedChat.user }));
+  }
+
+  function handleVideoCall() {
+    if (!selectedChat) return;
+
+    const status = selectedChat.user.status;
+    if (["offline", "busy", "in_call"].includes(status)) {
+      toast.warn(
+        t(
+          "User is not available for a call right now.",
+          "Kullanıcı şu anda arama için uygun değil."
+        )
+      );
+      return;
+    }
+
+    dispatch(startCall({ type: "video", peerUser: selectedChat.user }));
+  }
+  // ============================================
+
+  function handleFileClick() {
+    fileInputRef.current?.click();
+  }
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    alert(`Dosya seçildi: ${file.name}`);
+  }
 
   if (!selectedChat) {
     return (
@@ -331,6 +381,26 @@ export default function ChatDetail() {
       </div>
     );
   }
+
+  const showCallStatus =
+    inCall &&
+    (!selectedChat?.user?.id ||
+      (peerUser && String(peerUser.id) === String(selectedChat.user.id)));
+
+  const iconBtnStyle = {
+    background: "none",
+    border: "none",
+    borderRadius: "50%",
+    cursor: "pointer",
+    color: "#5c93f7",
+    padding: 7,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 22,
+    marginLeft: 6,
+    transition: "background .15s",
+  };
 
   return (
     <div
@@ -345,97 +415,73 @@ export default function ChatDetail() {
       }}
     >
       {/* header */}
-      <div
-        style={{
-          padding: "0 24px",
-          borderBottom: "1px solid #22293a",
-          background: isDark ? "#202124" : "#fff",
-          color: isDark ? "#fff" : "#23272f",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          height: 74,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-          <UserAvatar user={selectedChat.user} />
-          <div>
-            <div style={{ fontWeight: "600", fontSize: 16 }}>
-              {selectedChat.user.first_name ||
-                selectedChat.user.name ||
-                t("User", "Kullanıcı")}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                fontSize: 13,
-                marginTop: 2,
-              }}
-            >
+      {headerVisible && (
+        <div
+          style={{
+            padding: "0 24px",
+            borderBottom: "1px solid #22293a",
+            background: isDark ? "#202124" : "#fff",
+            color: isDark ? "#fff" : "#23272f",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            height: 74,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+            <UserAvatar user={selectedChat.user} />
+            <div>
+              <div style={{ fontWeight: "600", fontSize: 16 }}>
+                {selectedChat.user.first_name ||
+                  selectedChat.user.name ||
+                  t("User", "Kullanıcı")}
+              </div>
               <div
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: getStatusColor(
-                    selectedChat.user.status,
-                    false
-                  ),
-                  marginRight: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  fontSize: 13,
+                  marginTop: 2,
                 }}
-              />
-              <span style={{ color: "#888" }}>
-                {getStatusText(selectedChat.user.status, false, t)}
-              </span>
+              >
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: getStatusColor(
+                      selectedChat.user.status,
+                      showCallStatus
+                    ),
+                    marginRight: 6,
+                  }}
+                />
+                <span style={{ color: "#888" }}>
+                  {getStatusText(selectedChat.user.status, showCallStatus, t)}
+                </span>
+              </div>
             </div>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              style={iconBtnStyle}
+              title={t("Audio Call", "Sesli Arama")}
+              onClick={handleAudioCall}
+            >
+              <FiPhone size={22} />
+            </button>
+            <button
+              style={iconBtnStyle}
+              title={t("Video Call", "Görüntülü Arama")}
+              onClick={handleVideoCall}
+            >
+              <FiVideo size={22} />
+            </button>
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            style={{
-              background: "none",
-              border: "none",
-              borderRadius: "50%",
-              cursor: "pointer",
-              color: "#5c93f7",
-              padding: 7,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 22,
-              marginLeft: 6,
-              transition: "background .15s",
-            }}
-            title={t("Audio Call", "Sesli Arama")}
-            onClick={() => toast.info("Call!")}
-          >
-            <FiPhone size={22} />
-          </button>
-          <button
-            style={{
-              background: "none",
-              border: "none",
-              borderRadius: "50%",
-              cursor: "pointer",
-              color: "#5c93f7",
-              padding: 7,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 22,
-              marginLeft: 6,
-              transition: "background .15s",
-            }}
-            title={t("Video Call", "Görüntülü Arama")}
-            onClick={() => toast.info("Video Call!")}
-          >
-            <FiVideo size={22} />
-          </button>
-        </div>
-      </div>
+      )}
 
-      {/* mesajlar */}
+      {/* messages */}
       <div
         style={{
           flex: 1,
@@ -547,7 +593,7 @@ export default function ChatDetail() {
         <div ref={messageEndRef} />
       </div>
 
-      {/* fooTer */}
+      {/* footer */}
       <form
         onSubmit={handleSendMessage}
         style={{
