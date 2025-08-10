@@ -1,9 +1,13 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float,  ForeignKey, JSON, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, Float, ForeignKey, JSON, DateTime, Text, func, Index
 from backend.database import Base
 from datetime import datetime, timezone
 from sqlalchemy.orm import relationship
 import pytz
 from sqlalchemy import UniqueConstraint
+
+def now_tr():
+    return datetime.now(pytz.timezone("Europe/Istanbul"))
+
 
 class Users(Base):
   __tablename__='users'
@@ -100,3 +104,28 @@ class Patients(Base):
     
     def __repr__(self):
         return f"<Patient {self.first_name} {self.last_name}>"
+    
+class SessionLog(Base):
+    __tablename__ = "session_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # Çağrının bitiş (veya başlangıç) zamanı - tz-aware
+    session_time_stamp = Column(DateTime(timezone=True), nullable=False, index=True)
+
+    # Fernet ile şifrelenecek transcript
+    transcript = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=now_tr, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=now_tr, onupdate=now_tr, nullable=False)
+    user1 = relationship("Users", foreign_keys=[user1_id])
+    user2 = relationship("Users", foreign_keys=[user2_id])
+
+# Listeleme sorgularını hızlandırmak için composite index
+Index(
+     "ix_session_logs_user_pair_time",
+     SessionLog.user1_id,
+     SessionLog.user2_id,
+     SessionLog.session_time_stamp,
+)

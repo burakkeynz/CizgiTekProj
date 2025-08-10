@@ -15,14 +15,7 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    op.add_column('users', sa.Column('read_receipt_enabled', sa.Boolean(), nullable=True))
-    op.execute("UPDATE users SET read_receipt_enabled = 1")  
-    op.alter_column(
-        'users', 
-        'read_receipt_enabled',
-        existing_type=sa.Boolean(),
-        nullable=False
-    )
+   pass
 
 def downgrade():
-    op.drop_column('users', 'read_receipt_enabled')
+   pass

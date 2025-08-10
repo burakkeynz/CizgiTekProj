@@ -1,14 +1,34 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routers import auth, users, gemini, chatlogs, patients, upload, files, conversations
-from backend.models import Base, Users
-from backend.database import engine, get_db
 from dotenv import load_dotenv
 import os
 import socketio
+
+from sqlalchemy.orm import Session
+from backend.database import engine, get_db
+from backend.models import Base, Users, SessionLog, now_tr
+from backend.utils.security import encrypt_message
+
+from backend.routers import (
+    auth,
+    users,
+    gemini,
+    chatlogs,
+    patients,
+    upload,
+    files,
+    conversations,
+    sessionlogs,
+)
+
+
 import backend.globals as globals_mod
+import io, time, wave
+import webrtcvad
+from backend.routers.gemini import upload_and_wait_active, client as gemini_client
 
 load_dotenv()
+
 fastapi_app = FastAPI()
 
 origins_env = os.getenv("CORS_ORIGINS", "")
@@ -16,11 +36,12 @@ origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()
 
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,          # prod: whitelist; dev: ["*"] olabilir
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 fastapi_app.include_router(auth.router)
 fastapi_app.include_router(users.router)
@@ -30,21 +51,131 @@ fastapi_app.include_router(patients.router)
 fastapi_app.include_router(upload.router)
 fastapi_app.include_router(files.router)
 fastapi_app.include_router(conversations.router)
+fastapi_app.include_router(sessionlogs.router)
 
 @fastapi_app.get("/entry")
 def entry_point():
     return {"status": "SocketIO entegre FastAPI aktif."}
 
+
 Base.metadata.create_all(bind=engine)
 
-
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=origins)
-app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=origins or "*")
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)  
+sio_app = app
 
 globals_mod.sio = sio
 globals_mod.connected_users = {}
 
-# # Debug için
+
+SAMPLE_RATE = 16000
+FRAME_MS = 20
+FRAME_BYTES = int(SAMPLE_RATE * (FRAME_MS / 1000.0) * 2)  # 640 byte @16k/20ms
+SILENCE_TAIL_MS = 300
+VAD = webrtcvad.Vad(2)  # 0-3 arası 2 dengeli
+
+pcm_states = {
+    # sid: {
+    #   "buf": bytearray(),
+    #   "seg_buf": bytearray(),
+    #   "voiced": bool,
+    #   "last_voice": float_epoch,
+    #   "user_id": int|None,
+    #   "peer_user_id": int|None,
+    #   "session_ts": datetime/iso|None,
+    #   "segments": [str, ...]
+    # }
+}
+
+sid_to_user = {}
+
+def _pcm16_to_wav(pcm: bytes, sr: int = SAMPLE_RATE) -> bytes:
+    bio = io.BytesIO()
+    with wave.open(bio, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(pcm)
+    return bio.getvalue()
+
+async def _transcribe_wav_bytes(wav_bytes: bytes, prompt: str = "Transcribe the Turkish (and English if any) speech as plain text.") -> str:
+    active_file = upload_and_wait_active(wav_bytes, "audio/wav")
+    try:
+        resp = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt, active_file],
+        )
+        return getattr(resp, "text", "") or ""
+    finally:
+        try:
+            if getattr(active_file, "name", None):
+                gemini_client.files.delete(name=active_file.name)
+        except Exception:
+            pass
+
+async def _finalize_segment_and_emit(sid: str):
+    st = pcm_states.get(sid)
+    if not st or not st["seg_buf"]:
+        if st:
+            st["voiced"] = False
+        return
+
+    raw = bytes(st["seg_buf"])
+    st["seg_buf"].clear()
+    st["voiced"] = False
+
+    wav_bytes = _pcm16_to_wav(raw, SAMPLE_RATE)
+    try:
+        text = (await _transcribe_wav_bytes(wav_bytes)).strip()
+    except Exception as e:
+        await sio.emit("transcribe_error", f"{e}", to=sid)
+        return
+
+    if text:
+        st["segments"].append(text)
+        await sio.emit("partial_transcript", {"text": text, "is_final": True}, to=sid)
+        peer_sid = None
+        if st.get("peer_user_id") is not None:
+            peer_sid = globals_mod.connected_users.get(str(st["peer_user_id"]))
+        if peer_sid:
+            await sio.emit("partial_transcript", {"text": text, "is_final": True}, to=peer_sid)
+
+async def _flush_and_save_sessionlog(sid: str):
+    st = pcm_states.get(sid)
+    if not st:
+        return
+
+    # açık segmenti kapat
+    if st["seg_buf"]:
+        await _finalize_segment_and_emit(sid)
+
+    transcript = [{"text": t} for t in st["segments"] if t]
+
+    if transcript and st.get("user_id") and st.get("peer_user_id"):
+        try:
+            db: Session = next(get_db())
+            row = SessionLog(
+                user1_id=int(st["user_id"]),
+                user2_id=int(st["peer_user_id"]),
+                session_time_stamp=st.get("session_ts") or now_tr(),
+                transcript=encrypt_message(transcript),
+            )
+            db.add(row)
+            db.commit()
+            try:
+                await sio.emit("sessionlog_saved", {"id": row.id}, to=sid)
+                peer_sid = globals_mod.connected_users.get(str(st["peer_user_id"]))
+                if peer_sid:
+                    await sio.emit("sessionlog_saved", {"id": row.id}, to=peer_sid)
+            except Exception:
+                pass
+        except Exception as e:
+            await sio.emit("transcribe_error", f"SessionLog save error: {e}", to=sid)
+
+    pcm_states.pop(sid, None)
+
+
+# # Debug
 # @sio.on("*")
 # async def catch_all(event, sid, data):
 #     print(f"[SOCKET][CATCH-ALL] event={event} sid={sid} data={data}")
@@ -52,30 +183,43 @@ globals_mod.connected_users = {}
 @sio.event
 async def connect(sid, environ):
     print(f"[Socket][CONNECT] Yeni bağlantı: SID={sid}")
-    print("[Socket][CONNECT] globals_mod.connected_users id:", id(globals_mod.connected_users), "content:", globals_mod.connected_users)
+    print(
+        "[Socket][CONNECT] globals_mod.connected_users id:",
+        id(globals_mod.connected_users),
+        "content:",
+        globals_mod.connected_users,
+    )
 
 @sio.event
 async def join(sid, data):
     user_id = str(data.get("user_id"))
     print(f"[Socket][JOIN] user_id={user_id}, sid={sid}")
     globals_mod.connected_users[user_id] = sid
+    try:
+        sid_to_user[sid] = int(user_id)
+    except Exception:
+        sid_to_user[sid] = None
 
 @sio.event
 async def typing(sid, data):
     receiver_id = str(data.get("receiver_id"))
-    sender_id =str(data.get("sender_id"))
+    sender_id = str(data.get("sender_id"))
     conversation_id = str(data.get("conversation_id"))
-    print("[Socket][TYPING] globals_mod.connected_users id:", id(globals_mod.connected_users), "content:", globals_mod.connected_users)
+    print(
+        "[Socket][TYPING] globals_mod.connected_users id:",
+        id(globals_mod.connected_users),
+        "content:",
+        globals_mod.connected_users,
+    )
     receiver_sid = globals_mod.connected_users.get(receiver_id)
-    print(f"[Socket][TYPING] {sender_id=} -> {receiver_id=}, {receiver_sid=}")
+    print(
+        f"[Socket][TYPING] sender_id={sender_id} -> receiver_id={receiver_id}, receiver_sid={receiver_sid}"
+    )
     if receiver_sid:
         await sio.emit(
             "typing",
-            {
-                "sender_id": sender_id,
-                "conversation_id": conversation_id
-            },
-            to=receiver_sid
+            {"sender_id": sender_id, "conversation_id": conversation_id},
+            to=receiver_sid,
         )
     else:
         print(f"[Socket][TYPING] UYARI: {receiver_id} için SID yok, typing emit olmadı.")
@@ -83,7 +227,7 @@ async def typing(sid, data):
 @sio.event
 async def disconnect(sid):
     disconnected_user_id = None
-    for uid, stored_sid in globals_mod.connected_users.items():
+    for uid, stored_sid in list(globals_mod.connected_users.items()):
         if stored_sid == sid:
             disconnected_user_id = uid
             break
@@ -91,53 +235,61 @@ async def disconnect(sid):
         del globals_mod.connected_users[disconnected_user_id]
         print(f"[Socket][DISCONNECT] user_id={disconnected_user_id} SID={sid} disconnected.")
 
-# WebRTC Signaling Events 
+    try:
+        await _flush_and_save_sessionlog(sid)
+    finally:
+        sid_to_user.pop(sid, None)
+
+
 @sio.on("webrtc_offer")
 async def webrtc_offer(sid, data):
-    print(f"[BACKEND][OFFER] GELDİ! sid={sid} | data={data}")
-    print(f"[BACKEND][OFFER] connected_users: {globals_mod.connected_users}")
-    to_user = str(data["to_user_id"])
-    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
-    print(f"[BACKEND][OFFER] to_user_id={to_user} => to_sid={to_sid}")
+    print(f"[WebRTC][OFFER] sid={sid} | data={data}")
+    print(f"[WebRTC][OFFER] connected_users: {globals_mod.connected_users}")
+    to_user = str(data.get("to_user_id"))
+    to_sid = globals_mod.connected_users.get(to_user)
+    print(f"[WebRTC][OFFER] to_user_id={to_user} => to_sid={to_sid}")
     if to_sid:
-        print(f"[BACKEND][OFFER] EMIT EDİLİYOR -> {to_user} ({to_sid})")
+        print(f"[WebRTC][OFFER] EMIT -> {to_user} ({to_sid})")
         await sio.emit("webrtc_offer", data, to=to_sid)
     else:
-        print(f"[BACKEND][OFFER] Kullanıcı çevrimdışı! {to_user}")
+        print(f"[WebRTC][OFFER] Kullanıcı çevrimdışı! {to_user}")
 
 @sio.on("webrtc_answer")
 async def webrtc_answer(sid, data):
-    print(f"[WebRTC][ANSWER] GELDİ! sid={sid} | data={data}")
-    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
-    print(f"[WebRTC][ANSWER] to_user_id={data['to_user_id']} => to_sid={to_sid}")
+    print(f"[WebRTC][ANSWER] sid={sid} | data={data}")
+    to_user = str(data.get("to_user_id"))
+    to_sid = globals_mod.connected_users.get(to_user)
+    print(f"[WebRTC][ANSWER] to_user_id={to_user} => to_sid={to_sid}")
     if to_sid:
         await sio.emit("webrtc_answer", data, to=to_sid)
-        print(f"[WebRTC][ANSWER] EMIT EDİLDİ -> {to_sid}")
+        print(f"[WebRTC][ANSWER] EMIT -> {to_sid}")
     else:
         print(f"[WebRTC][ANSWER] Kullanıcı çevrimdışı!")
 
 @sio.on("webrtc_ice_candidate")
 async def webrtc_ice_candidate(sid, data):
-    print(f"[WebRTC][ICE] GELDİ! sid={sid} | data={data}")
-    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
-    print(f"[WebRTC][ICE] to_user_id={data['to_user_id']} => to_sid={to_sid}")
+    print(f"[WebRTC][ICE] sid={sid} | data={data}")
+    to_user = str(data.get("to_user_id"))
+    to_sid = globals_mod.connected_users.get(to_user)
+    print(f"[WebRTC][ICE] to_user_id={to_user} => to_sid={to_sid}")
     if to_sid:
         await sio.emit("webrtc_ice_candidate", data, to=to_sid)
-        print(f"[WebRTC][ICE] EMIT EDİLDİ -> {to_sid}")
+        print(f"[WebRTC][ICE] EMIT -> {to_sid}")
     else:
         print(f"[WebRTC][ICE] Kullanıcı çevrimdışı!")
 
 @sio.on("webrtc_call_end")
 async def webrtc_call_end(sid, data):
-    print(f"[WebRTC][CALL END] GELDİ! sid={sid} | data={data}")
-    to_sid = globals_mod.connected_users.get(str(data["to_user_id"]))
-    print(f"[WebRTC][CALL END] to_user_id={data['to_user_id']} => to_sid={to_sid}")
+    print(f"[WebRTC][CALL END] sid={sid} | data={data}")
+    to_user = str(data.get("to_user_id"))
+    to_sid = globals_mod.connected_users.get(to_user)
+    print(f"[WebRTC][CALL END] to_user_id={to_user} => to_sid={to_sid}")
     if to_sid:
         await sio.emit("webrtc_call_end", data, to=to_sid)
-        print(f"[WebRTC][CALL END] EMIT EDİLDİ -> {to_sid}")
+        print(f"[WebRTC][CALL END] EMIT -> {to_sid}")
     else:
         print(f"[WebRTC][CALL END] Kullanıcı çevrimdışı!")
-        
+
 @sio.on("user_status")
 async def user_status(sid, data):
     user_id = data.get("user_id")
@@ -149,10 +301,64 @@ async def user_status(sid, data):
     if user:
         user.status = status
         db.commit()
-        print(f"[Socket][STATUS] Kullanıcı {user_id} -> {status} yapıldı.")
-        await sio.emit("user_status_update", {
-            "user_id": user.id,
-            "status": status
-        })
+        print(f"[Socket][STATUS] Kullanıcı {user_id} -> {status}")
+        await sio.emit("user_status_update", {"user_id": user.id, "status": status})
 
-sio_app = app
+
+@sio.on("pcm_begin")
+async def pcm_begin(sid, data):
+    """
+    data: { user_id, peer_user_id, session_time_stamp }
+    """
+    user_id = data.get("user_id") or sid_to_user.get(sid)
+    peer_user_id = data.get("peer_user_id")
+    session_ts = data.get("session_time_stamp")  
+
+    pcm_states[sid] = {
+        "buf": bytearray(),
+        "seg_buf": bytearray(),
+        "voiced": False,
+        "last_voice": 0.0,
+        "user_id": int(user_id) if user_id is not None else None,
+        "peer_user_id": int(peer_user_id) if peer_user_id is not None else None,
+        "session_ts": session_ts or now_tr(),
+        "segments": [],
+    }
+    print(f"[PCM][BEGIN] sid={sid} user={user_id} peer={peer_user_id}")
+
+@sio.on("pcm_chunk")
+async def pcm_chunk(sid, data):
+    """
+    data: ArrayBuffer (binary) veya {pcm: <bytes>}
+          20ms @16k Int16LE -> 640 byte
+    """
+    st = pcm_states.get(sid)
+    if not st:
+        return
+
+    # bazı clientlar {pcm: ArrayBuffer} gönderir
+    chunk = data.get("pcm") if isinstance(data, dict) and "pcm" in data else data
+    if isinstance(chunk, bytearray):
+        st["buf"].extend(chunk)
+    else:
+        st["buf"].extend(bytes(chunk))
+
+    while len(st["buf"]) >= FRAME_BYTES:
+        frame = st["buf"][:FRAME_BYTES]
+        del st["buf"][:FRAME_BYTES]
+
+        is_speech = VAD.is_speech(frame, SAMPLE_RATE)
+        now = time.time()
+
+        if is_speech:
+            st["seg_buf"].extend(frame)
+            st["voiced"] = True
+            st["last_voice"] = now
+        else:
+            if st["voiced"] and (now - st["last_voice"]) * 1000 >= SILENCE_TAIL_MS:
+                await _finalize_segment_and_emit(sid)
+
+@sio.on("pcm_end")
+async def pcm_end(sid, data=None):
+    print(f"[PCM][END] sid={sid}")
+    await _flush_and_save_sessionlog(sid)
