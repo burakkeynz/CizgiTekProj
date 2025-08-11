@@ -172,12 +172,12 @@ export default function ActiveCall({
   const [camOn, setCamOn] = useState(callType === "video");
   const [peerConnected, setPeerConnected] = useState(false);
 
-  // ---- PCM Worklet refs ----
   const audioCtxRef = useRef(null);
   const workletNodeRef = useRef(null);
   const workletSrcRef = useRef(null);
   const pcmSinkRef = useRef(null);
   const pcmStartedRef = useRef(false);
+  const callIdRef = useRef(null);
 
   const dbg = useRef({
     tOfferSent: 0,
@@ -248,6 +248,8 @@ export default function ActiveCall({
         user_id: currentUser.id,
         peer_user_id: peerUser?.id,
         session_time_stamp: new Date().toISOString(),
+        call_id: callIdRef.current,
+        role: isStarter ? "caller" : "callee",
       });
 
       pcmStartedRef.current = true;
@@ -304,6 +306,16 @@ export default function ActiveCall({
     }
     cleanupAll(localVideoRef, remoteVideoRef, localStreamRef, remoteAudioRef);
   }
+
+  useEffect(() => {
+    if (!callIdRef.current) {
+      callIdRef.current =
+        (incoming && incoming.call_id) ||
+        `${chat_id || "p2p"}-${Date.now()}-${currentUser?.id}-${
+          peerUser?.id || ""
+        }`;
+    }
+  }, [incoming?.call_id, chat_id, currentUser?.id, peerUser?.id]);
 
   // karşı taraf kapattığında
   useEffect(() => {
@@ -396,19 +408,29 @@ export default function ActiveCall({
         peerConnectionRef.current = pc;
 
         const handleOffer = async (data) => {
-          if (!pc) return;
+          if (!peerConnectionRef.current) return;
+          const pc = peerConnectionRef.current;
+
           try {
-            console.log("[RTC] handleOffer");
+            if (!callIdRef.current && data.call_id) {
+              callIdRef.current = data.call_id;
+            }
+
             await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
+
             addLocalTracks(pc, localStreamRef.current);
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+
             socket.emit("webrtc_answer", {
               from_user_id: currentUser.id,
               to_user_id: peerUser?.id,
               sdp: answer.sdp,
               chat_id,
+              call_id: callIdRef.current,
             });
+
             dispatch(answerCall());
           } catch (e) {
             console.error("[CALLEE][handleOffer][ERROR]", e);
@@ -429,6 +451,7 @@ export default function ActiveCall({
             sdp: offer.sdp,
             call_type: callType,
             chat_id,
+            call_id: callIdRef.current, //şimdi ekledim
           });
           console.log("[RTC] offer sent");
         } else if (incoming && incoming.sdp) {

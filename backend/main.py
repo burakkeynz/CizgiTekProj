@@ -5,26 +5,21 @@ import os
 import socketio
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, and_
+
 from backend.database import engine, get_db
 from backend.models import Base, Users, SessionLog, now_tr
-from backend.utils.security import encrypt_message
-from datetime import datetime, timezone
+from backend.utils.security import encrypt_message, decrypt_message
+from datetime import datetime, timezone, timedelta
 
 from backend.routers import (
-    auth,
-    users,
-    gemini,
-    chatlogs,
-    patients,
-    upload,
-    files,
-    conversations,
-    sessionlogs,
+    auth, users, gemini, chatlogs, patients, upload, files, conversations, sessionlogs
 )
 
 import asyncio
 import backend.globals as globals_mod
-import io, time, wave
+import io, time, wave, re
 import webrtcvad
 from backend.routers.gemini import upload_and_wait_active, client as gemini_client
 
@@ -37,7 +32,7 @@ origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()
 
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,          # prod: whitelist; dev: ["*"] olabilir
+    allow_origins=origins or ["*"],  # dev için serbest; prod'da whitelist
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,6 +54,7 @@ def entry_point():
 
 Base.metadata.create_all(bind=engine)
 
+
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=origins or "*")
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 sio_app = app
@@ -70,20 +66,18 @@ SAMPLE_RATE = 16000
 FRAME_MS = 20
 FRAME_BYTES = int(SAMPLE_RATE * (FRAME_MS / 1000.0) * 2)  # 640 byte @16k/20ms
 
-# Daha az parça => daha az API çağrısı
-SILENCE_TAIL_MS = 900     # 300 -> 900
-MIN_SEGMENT_MS  = 1200    # 1.2s altını finalize etme
+SILENCE_TAIL_MS = 900
+MIN_SEGMENT_MS  = 1200
+VAD = webrtcvad.Vad(2)
 
-VAD = webrtcvad.Vad(2)  # 0-3 arası 2 dengeli
-
-# ---- Gemini RPM limiter (default 8 rpm, env ile değiştir)
+#Gemini RPM limiter (default 8 rpm; env ile değiştirilebilir)
 RATE_LIMIT_RPM = int(os.getenv("GEMINI_RPM", "8"))
 _MIN_INTERVAL = 60.0 / max(1, RATE_LIMIT_RPM)
 _last_call_ts = 0.0
 _rate_lock = asyncio.Lock()
 
 async def _rate_limit_gate():
-    """Dakikalık istek sınırına uymak için basit kapı."""
+    """Dakika başına istek için basit kapı."""
     global _last_call_ts
     async with _rate_lock:
         now = time.time()
@@ -106,7 +100,7 @@ def _extract_retry_delay_seconds(err) -> float | None:
     return None
 
 def _sync_call_with_backoff(wav_bytes: bytes, prompt: str):
-    """Gemini generate_content için 429/ACTIVE gecikmesi vb. durumlarda backoff'lu çağrı."""
+    """Gemini generate_content için basit backoff stratejisi."""
     delay_default = 10.0
     attempts = 3
     for _ in range(attempts):
@@ -137,20 +131,48 @@ def _sync_call_with_backoff(wav_bytes: bytes, prompt: str):
             raise
     raise RuntimeError("Gemini backoff attempts exhausted")
 
-pcm_states = {
-    # sid: {
-    #   "buf": bytearray(),
-    #   "seg_buf": bytearray(),
-    #   "voiced": bool,
-    #   "last_voice": float_epoch,
-    #   "user_id": int|None,
-    #   "peer_user_id": int|None,
-    #   "session_ts": datetime/iso|None,
-    #   "segments": [str, ...],
-    #   "n_frames": int, "n_voiced": int, "n_segments": int
-    # }
+#Çöp metin filtresi 
+_FILLER_WORDS = {
+    "uh","uhhuh","umm","hm","hmm","mm","eee","ı","i","hıhı","haha","ha","hahaha"
+}
+_ALLOW_SHORT = {
+    "evet","hayır","hayir","tamam","olur","peki","tabi","teşekkürler","tesekkurler",
+    "sağ ol","sag ol","yok","var","merhaba","alo"
 }
 
+def _norm_token(w: str) -> str:
+    return w.lower().replace("-", "").strip()
+
+def _is_trash_text(s: str) -> bool:
+    s = (s or "").strip()
+    if not s:
+        return True
+
+    # kısa ama anlamlı yanıtları korumak adına 
+    norm = re.sub(r"\s+", " ", s.lower())
+    if norm in _ALLOW_SHORT:
+        return False
+
+    if len(s) < 10:
+        return True
+
+    words = re.findall(r"[^\W\d_]+", s, flags=re.UNICODE)
+    if len(words) < 3:
+        return True
+
+    letters = re.findall(r"[^\W\d_]", s, flags=re.UNICODE)
+    if (len(letters) / max(1, len(s))) < 0.6:
+        return True
+
+    if all(_norm_token(w) in _FILLER_WORDS for w in words):
+        return True
+
+    return False
+
+# PCM akış state
+pcm_states = {
+    # sid: {...}
+}
 sid_to_user = {}
 
 def _parse_client_iso(ts: str):
@@ -160,7 +182,7 @@ def _parse_client_iso(ts: str):
     try:
         if ts.endswith("Z"):
             ts = ts[:-1] + "+00:00"
-        return datetime.fromisoformat(ts)  # tz-aware
+        return datetime.fromisoformat(ts)
     except Exception:
         return now_tr()
 
@@ -177,7 +199,6 @@ async def _transcribe_wav_bytes(
     wav_bytes: bytes,
     prompt: str = "Transcribe the Turkish (and English if any) speech as plain text.",
 ) -> str:
-    # RPM kapısı
     await _rate_limit_gate()
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: _sync_call_with_backoff(wav_bytes, prompt))
@@ -208,43 +229,102 @@ async def _finalize_segment_and_emit(sid: str):
         await sio.emit("transcribe_error", f"{e}", to=sid)
         return
 
-    if text:
-        st["segments"].append(text)
-        st["n_segments"] += 1
-        print(f"[PCM][SEGMENT][TEXT] #{st['n_segments']} len={len(text)}")
-        await sio.emit("partial_transcript", {"text": text, "is_final": True}, to=sid)
-        peer_sid = None
-        if st.get("peer_user_id") is not None:
-            peer_sid = globals_mod.connected_users.get(str(st["peer_user_id"]))
-        if peer_sid:
-            await sio.emit("partial_transcript", {"text": text, "is_final": True}, to=peer_sid)
+    # Çöpleri at
+    if not text or _is_trash_text(text):
+        print("[PCM][SEGMENT][DROP] trash/empty segment atıldı.")
+        return
+
+    st["segments"].append(text)
+    st["n_segments"] += 1
+    print(f"[PCM][SEGMENT][TEXT] #{st['n_segments']} len={len(text)}")
+    await sio.emit("partial_transcript", {"text": text, "is_final": True}, to=sid)
+
+    peer_sid = None
+    if st.get("peer_user_id") is not None:
+        peer_sid = globals_mod.connected_users.get(str(st["peer_user_id"]))
+    if peer_sid:
+        await sio.emit("partial_transcript", {"text": text, "is_final": True}, to=peer_sid)
 
 async def _flush_and_save_sessionlog(sid: str):
     st = pcm_states.get(sid)
     if not st:
         return
 
-    # açık segmenti kapat
     if st["seg_buf"]:
         await _finalize_segment_and_emit(sid)
 
-    transcript = [{"text": t} for t in st["segments"] if t]
+    items = [{"text": t} for t in st["segments"] if t]
+    plain_all = " ".join(x["text"] for x in items).strip()
 
     print(
         f"[PCM][FLUSH] sid={sid} frames={st.get('n_frames',0)} voiced={st.get('n_voiced',0)} "
-        f"segments={st.get('n_segments',0)} transcript_items={len(transcript)}"
+        f"segments={st.get('n_segments',0)} transcript_items={len(items)}"
     )
 
-    if transcript and st.get("user_id") and st.get("peer_user_id"):
+    # Tümü çöp ise kaydetme
+    if not items or _is_trash_text(plain_all):
+        print("[PCM][FLUSH] tüm segmentler çöp görünüyor; DB kaydı atlandı.")
+        pcm_states.pop(sid, None)
+        return
+
+    if st.get("user_id") and st.get("peer_user_id"):
+        db: Session = next(get_db())
+        call_id = st.get("call_id")
         try:
-            db: Session = next(get_db())
-            row = SessionLog(
-                user1_id=int(st["user_id"]),
-                user2_id=int(st["peer_user_id"]),
-                session_time_stamp=st.get("session_ts") or now_tr(),
-                transcript=encrypt_message(transcript),
-            )
-            db.add(row)
+            row = None
+
+            if call_id and hasattr(SessionLog, "call_id"):
+                row = db.query(SessionLog).filter(SessionLog.call_id == call_id).first()
+                if row:
+                    existing = decrypt_message(row.transcript) or []
+                    row.transcript = encrypt_message((existing + items)[-500:])  
+                    row.updated_at = now_tr()
+                else:
+                    row = SessionLog(
+                        call_id=call_id,
+                        user1_id=int(st["user_id"]),
+                        user2_id=int(st["peer_user_id"]),
+                        session_time_stamp=st.get("session_ts") or now_tr(),
+                        transcript=encrypt_message(items),
+                    )
+                    db.add(row)
+            else:
+                # call_id yoksa, zaman penceresi + iki yönlü eşleştirme
+                approx = st.get("session_ts") or now_tr()
+                win_start = approx - timedelta(minutes=10)
+                win_end = approx + timedelta(minutes=10)
+                row = (
+                    db.query(SessionLog)
+                    .filter(
+                        or_(
+                            and_(
+                                SessionLog.user1_id == int(st["user_id"]),
+                                SessionLog.user2_id == int(st["peer_user_id"]),
+                            ),
+                            and_(
+                                SessionLog.user1_id == int(st["peer_user_id"]),
+                                SessionLog.user2_id == int(st["user_id"]),
+                            ),
+                        ),
+                        SessionLog.session_time_stamp >= win_start,
+                        SessionLog.session_time_stamp <= win_end,
+                    )
+                    .order_by(SessionLog.id.desc())
+                    .first()
+                )
+                if row:
+                    existing = decrypt_message(row.transcript) or []
+                    row.transcript = encrypt_message((existing + items)[-500:])
+                    row.updated_at = now_tr()
+                else:
+                    row = SessionLog(
+                        user1_id=int(st["user_id"]),
+                        user2_id=int(st["peer_user_id"]),
+                        session_time_stamp=approx,
+                        transcript=encrypt_message(items),
+                    )
+                    db.add(row)
+
             db.commit()
             print(f"[PCM][SAVE] session_logs.id={row.id}")
             try:
@@ -254,12 +334,28 @@ async def _flush_and_save_sessionlog(sid: str):
                     await sio.emit("sessionlog_saved", {"id": row.id}, to=peer_sid)
             except Exception:
                 pass
+
+        except IntegrityError:
+            db.rollback()
+            if call_id and hasattr(SessionLog, "call_id"):
+                row = db.query(SessionLog).filter(SessionLog.call_id == call_id).first()
+                if row:
+                    existing = decrypt_message(row.transcript) or []
+                    row.transcript = encrypt_message((existing + items)[-500:])
+                    row.updated_at = now_tr()
+                    db.commit()
+                    print(f"[PCM][SAVE][MERGED] session_logs.id={row.id} (IntegrityError sonrası)")
         except Exception as e:
             print(f"[PCM][SAVE][ERR] {e}")
-            await sio.emit("transcribe_error", f"SessionLog save error: {e}", to=sid)
+            try:
+                await sio.emit("transcribe_error", f"SessionLog save error: {e}", to=sid)
+            except Exception:
+                pass
 
     pcm_states.pop(sid, None)
 
+
+# ---------------- Socket.IO events ----------------
 @sio.event
 async def connect(sid, environ):
     print(f"[Socket][CONNECT] Yeni bağlantı: SID={sid}")
@@ -269,12 +365,12 @@ async def connect(sid, environ):
 @sio.event
 async def join(sid, data):
     user_id = str(data.get("user_id"))
-    print(f"[Socket][JOIN] user_id={user_id}, sid={sid}")
     globals_mod.connected_users[user_id] = sid
     try:
         sid_to_user[sid] = int(user_id)
     except Exception:
         sid_to_user[sid] = None
+    print(f"[Socket][JOIN] user_id={user_id}, sid={sid}")
 
 @sio.event
 async def typing(sid, data):
@@ -282,13 +378,8 @@ async def typing(sid, data):
     sender_id = str(data.get("sender_id"))
     conversation_id = str(data.get("conversation_id"))
     receiver_sid = globals_mod.connected_users.get(receiver_id)
-
     if receiver_sid:
-        await sio.emit("typing",
-            {"sender_id": sender_id, "conversation_id": conversation_id},
-            to=receiver_sid)
-    else:
-        print(f"[Socket][TYPING] UYARI: {receiver_id} için SID yok, typing emit olmadı.")
+        await sio.emit("typing", {"sender_id": sender_id, "conversation_id": conversation_id}, to=receiver_sid)
 
 @sio.event
 async def disconnect(sid):
@@ -326,25 +417,19 @@ async def webrtc_answer(sid, data):
 
 @sio.on("webrtc_ice_candidate")
 async def webrtc_ice_candidate(sid, data):
-    print(f"[WebRTC][ICE] sid={sid} | data={data}")
     to_user = str(data.get("to_user_id"))
     to_sid = globals_mod.connected_users.get(to_user)
-    print(f"[WebRTC][ICE] to_user_id={to_user} => to_sid={to_sid}")
     if to_sid:
         await sio.emit("webrtc_ice_candidate", data, to=to_sid)
-        print(f"[WebRTC][ICE] EMIT -> {to_sid}")
     else:
         print(f"[WebRTC][ICE] Kullanıcı çevrimdışı!")
 
 @sio.on("webrtc_call_end")
 async def webrtc_call_end(sid, data):
-    print(f"[WebRTC][CALL END] sid={sid} | data={data}")
     to_user = str(data.get("to_user_id"))
     to_sid = globals_mod.connected_users.get(to_user)
-    print(f"[WebRTC][CALL END] to_user_id={to_user} => to_sid={to_sid}")
     if to_sid:
         await sio.emit("webrtc_call_end", data, to=to_sid)
-        print(f"[WebRTC][CALL END] EMIT -> {to_sid}")
     else:
         print(f"[WebRTC][CALL END] Kullanıcı çevrimdışı!")
     try:
@@ -371,7 +456,6 @@ async def pcm_begin(sid, data):
     user_id = data.get("user_id") or sid_to_user.get(sid)
     peer_user_id = data.get("peer_user_id")
     session_ts = _parse_client_iso(data.get("session_time_stamp"))
-
     pcm_states[sid] = {
         "buf": bytearray(),
         "seg_buf": bytearray(),
@@ -381,46 +465,43 @@ async def pcm_begin(sid, data):
         "peer_user_id": int(peer_user_id) if peer_user_id is not None else None,
         "session_ts": session_ts or now_tr(),
         "segments": [],
-        # DEBUG sayaçları:
+        "call_id": data.get("call_id"),   # 🔑 istemciden gelen call_id
+        "role": data.get("role"),
         "n_frames": 0,
         "n_voiced": 0,
         "n_segments": 0,
     }
-    print(f"[PCM][BEGIN] sid={sid} user={user_id} peer={peer_user_id} ts={session_ts}")
+    print(f"[PCM][BEGIN] sid={sid} call_id={pcm_states[sid]['call_id']} user={user_id} peer={peer_user_id} ts={session_ts}")
 
 @sio.on("pcm_chunk")
 async def pcm_chunk(sid, data):
     st = pcm_states.get(sid)
     if not st:
         return
-
     chunk = data.get("pcm") if isinstance(data, dict) and "pcm" in data else data
     b = chunk if isinstance(chunk, (bytes, bytearray, memoryview)) else bytes(chunk)
-
     st["buf"].extend(b)
 
-    # frame'lere böl
     while len(st["buf"]) >= FRAME_BYTES:
         frame = st["buf"][:FRAME_BYTES]
         del st["buf"][:FRAME_BYTES]
 
         st["n_frames"] += 1
         is_speech = VAD.is_speech(frame, SAMPLE_RATE)
-        now = time.time()
+        now_ts = time.time()
 
         if is_speech:
             st["seg_buf"].extend(frame)
             st["voiced"] = True
-            st["last_voice"] = now
+            st["last_voice"] = now_ts
             st["n_voiced"] += 1
         else:
-            if st["voiced"] and (now - st["last_voice"]) * 1000 >= SILENCE_TAIL_MS:
+            if st["voiced"] and (now_ts - st["last_voice"]) * 1000 >= SILENCE_TAIL_MS:
                 await _finalize_segment_and_emit(sid)
 
         if st["n_frames"] % 50 == 0:
             print(
-                f"[PCM][CHUNK] sid={sid} frames={st['n_frames']} voiced={st['n_voiced']} "
-                f"open_seg_bytes={len(st['seg_buf'])}"
+                f"[PCM][CHUNK] sid={sid} frames={st['n_frames']} voiced={st['n_voiced']} open_seg_bytes={len(st['seg_buf'])}"
             )
 
 @sio.on("pcm_end")

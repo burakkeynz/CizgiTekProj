@@ -112,17 +112,14 @@ class SessionLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     user1_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     user2_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-
-    # Çağrının bitiş (veya başlangıç) zamanı - tz-aware
     session_time_stamp = Column(DateTime(timezone=True), nullable=False, index=True)
-
-    # Fernet ile şifrelenecek transcript
     transcript = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=now_tr, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=now_tr, onupdate=now_tr, nullable=False)
     user1 = relationship("Users", foreign_keys=[user1_id])
     user2 = relationship("Users", foreign_keys=[user2_id])
     summary = Column(Text, nullable=True)
+    call_id = Column(String(128), unique=True, index=True, nullable=True)
 
 # Listeleme sorgularını hızlandırmak için composite index
 Index(

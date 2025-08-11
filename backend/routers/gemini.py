@@ -18,20 +18,22 @@ from backend.routers.auth import get_current_user_from_cookie
 from backend.routers.prompts import *
 import webrtcvad
 
-
+#MIME düzeltmeleri
 mimetypes.add_type("audio/mp4", ".m4a")
+mimetypes.add_type("image/jpeg", ".jpg")
+mimetypes.add_type("image/jpeg", ".jpeg")
+mimetypes.add_type("image/png", ".png")
 
 router = APIRouter(prefix="/gemini", tags=["gemini"])
+
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 MODEL = "gemini-2.5-flash"
 
+# RPM limiter
 RATE_LIMIT_RPM = int(os.getenv("GEMINI_RPM", "8"))
 _MIN_INTERVAL = 60.0 / max(1, RATE_LIMIT_RPM)
 _last_call_ts = 0.0
-
-
 def _rl_gate():
-    """Dakikalık oran sınırlayıcı (senkron)."""
     global _last_call_ts
     now = time.time()
     wait = max(0.0, _MIN_INTERVAL - (now - _last_call_ts))
@@ -39,9 +41,7 @@ def _rl_gate():
         time.sleep(wait)
     _last_call_ts = time.time()
 
-
 def _stream_with_backoff(make_stream_fn, max_attempts=4, base_sleep=2.0):
-    """generate_content_stream için basit exponential backoff (429/ACTIVE gecikmesi vs)."""
     attempt = 0
     while attempt < max_attempts:
         attempt += 1
@@ -49,18 +49,17 @@ def _stream_with_backoff(make_stream_fn, max_attempts=4, base_sleep=2.0):
             _rl_gate()
             resp = make_stream_fn()
             for chunk in resp:
-                text = getattr(chunk, "text", None)
-                if text:
-                    yield text
+                if getattr(chunk, "text", None):
+                    yield chunk.text
             return
         except Exception as e:
             msg = str(e)
             transient = (
                 "RESOURCE_EXHAUSTED", "429",
-                "not in an ACTIVE state", "FAILED_PRECONDITION",
+                "ACTIVE", "FAILED_PRECONDITION",
                 "INTERNAL", "temporarily unavailable"
             )
-            if any(t in msg for t in transient):
+            if any(t.lower() in msg.lower() for t in transient):
                 time.sleep(min(base_sleep * (2 ** (attempt - 1)), 20.0))
                 continue
             yield f"\n[ERROR]: {msg}"
@@ -68,48 +67,30 @@ def _stream_with_backoff(make_stream_fn, max_attempts=4, base_sleep=2.0):
     yield "\n[ERROR]: Backoff attempts exhausted.\n"
 
 
+# yardımcı fonksiyonklar
 def s3_key_from_url(url: str) -> str:
-    """S3 signed/https URL’den key’i çıkar."""
     return url.split(".amazonaws.com/", 1)[1]
 
-
 def normalize_mime(filename: str, guessed: Optional[str]) -> str:
-    """Dosya adına ve guess’e göre MIME normalize eder (özellikle ses)."""
     fn = (filename or "").lower()
     mime = (guessed or "application/octet-stream")
-
     if fn.endswith(".webm") and mime == "video/webm":
         mime = "audio/webm"
-
     if fn.endswith(".m4a") and mime in (None, "application/octet-stream", "audio/mpeg"):
         mime = "audio/mp4"
-
     if mime == "application/octet-stream":
-        if fn.endswith(".mp3"):
-            mime = "audio/mpeg"
-        elif fn.endswith(".wav"):
-            mime = "audio/wav"
-        elif fn.endswith(".ogg"):
-            mime = "audio/ogg"
-        elif fn.endswith(".flac"):
-            mime = "audio/flac"
-        elif fn.endswith(".aiff") or fn.endswith(".aif"):
-            mime = "audio/aiff"
-        elif fn.endswith(".pdf"):
-            mime = "application/pdf"
-        elif fn.endswith(".png"):
-            mime = "image/png"
-        elif fn.endswith(".jpg") or fn.endswith(".jpeg"):
-            mime = "image/jpeg"
-
+        if fn.endswith(".mp3"):  mime = "audio/mpeg"
+        elif fn.endswith(".wav"): mime = "audio/wav"
+        elif fn.endswith(".ogg"): mime = "audio/ogg"
+        elif fn.endswith(".flac"): mime = "audio/flac"
+        elif fn.endswith(".aiff") or fn.endswith(".aif"): mime = "audio/aiff"
+        elif fn.endswith(".pdf"):  mime = "application/pdf"
+        elif fn.endswith(".png"):  mime = "image/png"
+        elif fn.endswith(".jpg") or fn.endswith(".jpeg"): mime = "image/jpeg"
     return mime
 
-
 def upload_and_wait_active(file_bytes: bytes, mime: str, timeout_s: float = 45.0, poll_sleep: float = 0.8):
-    """
-    Gemini File Store'a yükle; ACTIVE olana kadar bekle.
-    Gerektiğinde main.py bunu import ediyor, o yüzden ismi/fonksiyonu koruyoruz.
-    """
+    """main.py bunu import ediyor -> imza değişmedi."""
     up = client.files.upload(file=io.BytesIO(file_bytes), config=dict(mime_type=mime))
     name = up.name
     deadline = time.time() + timeout_s
@@ -121,13 +102,11 @@ def upload_and_wait_active(file_bytes: bytes, mime: str, timeout_s: float = 45.0
         except Exception:
             pass
         time.sleep(poll_sleep)
+    return up 
 
-    return up
-
-
-def _ensure_all_active(uploaded_list, timeout_s: float = 30.0, poll_sleep: float = 0.8):
-    """generate_content çağrısından hemen önce tüm FileData’ların ACTIVE olduğundan emin ol."""
-    names = [u.name for u in uploaded_list if getattr(u, "name", None)]
+def _ensure_all_active(file_objs, timeout_s: float = 30.0, poll_sleep: float = 0.8):
+    names = [getattr(u, "name", None) for u in file_objs]
+    names = [n for n in names if n]
     if not names:
         return
     deadline = time.time() + timeout_s
@@ -146,6 +125,11 @@ def _ensure_all_active(uploaded_list, timeout_s: float = 30.0, poll_sleep: float
             return
         time.sleep(poll_sleep)
 
+def _file_part_from_bytes(raw: bytes, mime: str):
+    """Bytes -> File Store -> Part(file_data). Inline **KULLANMIYORUZ** (INVALID_ARGUMENT kaçınmak için)."""
+    up = upload_and_wait_active(raw, mime)
+    return up, types.Part(file_data=types.FileData(file_uri=up.uri, mime_type=mime))
+
 
 @router.post("/chat/stream")
 async def gemini_chat_stream(
@@ -155,38 +139,45 @@ async def gemini_chat_stream(
     contents: str = Form(None),
     upload_files: Optional[List[UploadFile]] = File(None),
 ):
+    """
+    Eski çalışan yapı:
+      - Tüm resim/dosya içerikleri **önce File Store'a** yüklenir
+      - `types.FileData(file_uri=..., mime_type=...)` olarak gönderilir
+      - Stream yanıtı bozulmaz
+    """
     try:
-        inline_contents: List[types.Content] = []
+        built_contents: List[types.Content] = []
 
         def add_text(role: str, text: str):
-            inline_contents.append(types.Content(role=role, parts=[types.Part(text=text or "")]))
+            built_contents.append(types.Content(role=role, parts=[types.Part(text=text or "")]))
 
-        def add_bytes_part(raw: bytes, mime: str):
-            part = types.Part.from_bytes(data=raw, mime_type=mime)
-            inline_contents.append(types.Content(role="user", parts=[part]))
-
+        uploaded_for_cleanup = []
         if contents:
             try:
                 parsed = json.loads(contents)
                 for entry in parsed:
+                    role = entry.get("role")
+                    text = entry.get("text", "")
+                    if role == "user":
+                        add_text("user", text)
+                    elif role == "model":
+                        add_text("model", text)
+                        
                     if entry.get("files"):
                         for url in entry["files"]:
                             s3u = url["url"] if isinstance(url, dict) else url
                             s3_key = s3_key_from_url(s3u)
                             data = read_file_from_s3(s3_key)
                             filename = os.path.basename(s3_key)
-                            mime, _ = mimetypes.guess_type(filename)
-                            mime = normalize_mime(filename, mime)
-                            add_bytes_part(data, mime)
-
-                    if entry.get("role") == "user":
-                        add_text("user", entry.get("text", ""))
-                    elif entry.get("role") == "model":
-                        add_text("model", entry.get("text", ""))
+                            mime = normalize_mime(filename, mimetypes.guess_type(filename)[0])
+                            up, part = _file_part_from_bytes(data, mime)
+                            uploaded_for_cleanup.append(up)
+                            built_contents.append(types.Content(role="user", parts=[part]))
             except Exception as e:
                 print("[WARN] History parse hatası:", e)
         else:
-            if message.strip():
+
+            if (message or "").strip():
                 add_text("user", message)
 
         if files:
@@ -196,93 +187,47 @@ async def gemini_chat_stream(
                 s3_key = s3_key_from_url(url)
                 data = read_file_from_s3(s3_key)
                 filename = os.path.basename(s3_key)
-                mime, _ = mimetypes.guess_type(filename)
-                mime = normalize_mime(filename, mime)
-                add_bytes_part(data, mime)
+                mime = normalize_mime(filename, mimetypes.guess_type(filename)[0])
+                up, part = _file_part_from_bytes(data, mime)
+                uploaded_for_cleanup.append(up)
+                built_contents.append(types.Content(role="user", parts=[part]))
 
         if upload_files:
             for uf in upload_files:
                 raw = await uf.read()
                 filename = (uf.filename or "").lower()
-                mime = (uf.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream")
-                mime = normalize_mime(filename, mime)
-                add_bytes_part(raw, mime)
+                mime = normalize_mime(filename, uf.content_type or mimetypes.guess_type(filename)[0])
+                up, part = _file_part_from_bytes(raw, mime)
+                uploaded_for_cleanup.append(up)
+                built_contents.append(types.Content(role="user", parts=[part]))
 
-        # Google Search
         config = None
         if web_search:
-            config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
+            config = types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())]
+            )
 
-        uploaded_to_delete = []
-
-        def gen_with_inline():
-            _rl_gate()
-            if config:
-                resp = client.models.generate_content_stream(model=MODEL, contents=inline_contents, config=config)
-            else:
-                resp = client.models.generate_content_stream(model=MODEL, contents=inline_contents)
-            for chunk in resp:
-                if hasattr(chunk, "text") and chunk.text:
-                    yield chunk.text
-
-        def gen_with_filestore():
-            _rl_gate()
-            rebuilt: List[types.Content] = []
+        def streaming_gen():
             try:
-                for c in inline_contents:
-                    new_parts = []
-                    for p in c.parts:
-                        if getattr(p, "text", None) is not None:
-                            new_parts.append(types.Part(text=p.text))
-                        elif getattr(p, "inline_data", None) is not None or hasattr(p, "data"):
-                            inline = getattr(p, "inline_data", None)
-                            if not inline:
-                                raise ValueError("Inline part payload not accessible.")
-                            raw = inline.data
-                            mime = inline.mime_type or "application/octet-stream"
-                            up = upload_and_wait_active(raw, mime)
-                            uploaded_to_delete.append(up)
-                            fd = types.FileData(file_uri=up.uri, mime_type=mime)
-                            new_parts.append(types.Part(file_data=fd))
-                        else:
-                            new_parts.append(p)
-                    rebuilt.append(types.Content(role=c.role, parts=new_parts))
-
-                _ensure_all_active(uploaded_to_delete)
-
-                if config:
-                    resp = client.models.generate_content_stream(model=MODEL, contents=rebuilt, config=config)
-                else:
-                    resp = client.models.generate_content_stream(model=MODEL, contents=rebuilt)
-                for chunk in resp:
-                    if hasattr(chunk, "text") and chunk.text:
-                        yield chunk.text
+                _ensure_all_active(uploaded_for_cleanup)
+                def _mk():
+                    if config:
+                        return client.models.generate_content_stream(
+                            model=MODEL, contents=built_contents, config=config
+                        )
+                    return client.models.generate_content_stream(
+                        model=MODEL, contents=built_contents
+                    )
+                for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
+                    if piece:
+                        yield piece
             finally:
-                for up in uploaded_to_delete:
+                for up in uploaded_for_cleanup:
                     try:
                         if getattr(up, "name", None):
                             client.files.delete(name=up.name)
                     except Exception:
                         pass
-
-        def streaming_gen():
-            try:
-                yield from gen_with_inline()
-                return
-            except Exception as e_inline:
-                msg = str(e_inline)
-                fallback_reasons = (
-                    "too large", "request payload", "413", "INVALID_ARGUMENT",
-                    "Failed to convert server response", "bytes"
-                )
-                if any(k.lower() in msg.lower() for k in fallback_reasons):
-                    try:
-                        yield from gen_with_filestore()
-                        return
-                    except Exception as e_fs:
-                        yield f"\n[ERROR]: {e_fs}"
-                        return
-                yield f"\n[ERROR]: {e_inline}"
 
         return StreamingResponse(streaming_gen(), media_type="text/plain")
 
@@ -295,37 +240,35 @@ async def gemini_chat_stream(
 async def gemini_audio_transcribe(
     files: List[str] = Form(...),
     prompt: Optional[str] = Form(None),
-    me: dict = Depends(get_current_user_from_cookie), 
+    me: dict = Depends(get_current_user_from_cookie),
 ):
     if not me or not me.get("id"):
         raise HTTPException(401, "Authentication failed")
 
     try:
-        uploaded_parts = []
+        uploaded_objs = []  
         for url in files:
             s3_key = s3_key_from_url(url)
             data = read_file_from_s3(s3_key)
             filename = os.path.basename(s3_key)
-            guessed, _ = mimetypes.guess_type(filename)
-            mime = normalize_mime(filename, guessed)
-            active_file = upload_and_wait_active(data, mime)
-            uploaded_parts.append(active_file)
+            mime = normalize_mime(filename, mimetypes.guess_type(filename)[0])
+            up = upload_and_wait_active(data, mime)
+            uploaded_objs.append((up, mime))
 
-        # Prompt: form’dan gelirse onu kullan, yoksa merkezi transcribe prompt (TR)
         p = prompt.strip() if (prompt and prompt.strip()) else transcribe_prompt("tr")
 
         def streaming_gen():
             try:
-                _ensure_all_active(uploaded_parts)
+                _ensure_all_active([u for u, _ in uploaded_objs])
+                parts = [types.Part(text=p)]
+                for up, mime in uploaded_objs:
+                    parts.append(types.Part(file_data=types.FileData(file_uri=up.uri, mime_type=mime)))
+                contents = [types.Content(role="user", parts=parts)]
 
                 def _mk():
-                    return client.models.generate_content_stream(
-                        model=MODEL,
-                        contents=[p, *uploaded_parts]
-                    )
+                    return client.models.generate_content_stream(model=MODEL, contents=contents)
 
                 for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
-                    # Hata satırlarını olduğu gibi ilet, diğerlerini temizle
                     if piece.strip().startswith("[ERROR"):
                         yield piece
                     else:
@@ -333,24 +276,20 @@ async def gemini_audio_transcribe(
                         if cleaned:
                             yield cleaned
             finally:
-                for f in uploaded_parts:
+                for up, _ in uploaded_objs:
                     try:
-                        if getattr(f, "name", None):
-                            client.files.delete(name=f.name)
+                        if getattr(up, "name", None):
+                            client.files.delete(name=up.name)
                     except Exception:
                         pass
 
         return StreamingResponse(streaming_gen(), media_type="text/plain")
-
     except Exception as e:
         import traceback; traceback.print_exc()
         raise HTTPException(500, detail=f"Gemini audio transcribe error: {e}")
 
 
 def pcm16_from_wav(wav_bytes: bytes):
-    """
-    WAV -> (pcm_int16_bytes, sample_rate), eğer giriş stereo/16-bit değilse normalize 
-    """
     buf = io.BytesIO(wav_bytes)
     with wave.open(buf, 'rb') as wf:
         n_channels = wf.getnchannels()
@@ -358,20 +297,13 @@ def pcm16_from_wav(wav_bytes: bytes):
         framerate = wf.getframerate()
         n_frames = wf.getnframes()
         raw = wf.readframes(n_frames)
-
-    # 16 bite çeviriyorum
     if sampwidth != 2:
         raw = audioop.lin2lin(raw, sampwidth, 2)
-
-    # monoya indiriyorum
     if n_channels == 2:
         raw = audioop.tomono(raw, 2, 0.5, 0.5)
-
     return raw, framerate
 
-
 def wav_from_pcm16(pcm_bytes: bytes, sr: int = 16000) -> bytes:
-    """Int16 mono PCM -> WAV bytes."""
     out = io.BytesIO()
     with wave.open(out, 'wb') as wf:
         wf.setnchannels(1)
@@ -380,27 +312,21 @@ def wav_from_pcm16(pcm_bytes: bytes, sr: int = 16000) -> bytes:
         wf.writeframes(pcm_bytes)
     return out.getvalue()
 
-
 class _Frame:
     __slots__ = ("bytes", "timestamp", "duration")
-
     def __init__(self, b, ts, dur):
         self.bytes = b
         self.timestamp = ts
         self.duration = dur
 
-
 def _frame_generator(frame_ms: int, audio: bytes, sample_rate: int):
-    n = int(sample_rate * (frame_ms / 1000.0) * 2)  # 2 byte sample
-    offset = 0
-    ts = 0.0
+    n = int(sample_rate * (frame_ms / 1000.0) * 2)
+    offset = 0; ts = 0.0
     dur = (float(n) / (2 * sample_rate))
     L = len(audio)
     while offset + n <= L:
         yield _Frame(audio[offset:offset + n], ts, dur)
-        ts += dur
-        offset += n
-
+        ts += dur; offset += n
 
 def vad_segments(
     pcm16: bytes,
@@ -410,24 +336,16 @@ def vad_segments(
     max_silence_ms: int = 900,
     min_segment_ms: int = 1200
 ):
-    """
-    PCM16yı konuşma segmentlerine ayırır ve Int16 bytes listesi döner
-    """
+    import webrtcvad
     vad = webrtcvad.Vad(aggressiveness)
     frames = list(_frame_generator(frame_ms, pcm16, sample_rate))
-    cur = bytearray()
-    voiced = []
-    silence_run = 0
+    cur = bytearray(); voiced = []; silence_run = 0
     min_frames = int(min_segment_ms / frame_ms)
     max_silence_frames = int(max_silence_ms / frame_ms)
-
     need_bytes = int(min_frames * (sample_rate * (frame_ms / 1000.0) * 2))
-
     for fr in frames:
-        is_speech = vad.is_speech(fr.bytes, sample_rate)
-        if is_speech:
-            cur += fr.bytes
-            silence_run = 0
+        if vad.is_speech(fr.bytes, sample_rate):
+            cur += fr.bytes; silence_run = 0
         else:
             if len(cur) > 0:
                 silence_run += 1
@@ -436,14 +354,10 @@ def vad_segments(
                 else:
                     if len(cur) >= need_bytes:
                         voiced.append(bytes(cur))
-                    cur = bytearray()
-                    silence_run = 0
-
+                    cur = bytearray(); silence_run = 0
     if len(cur) > 0 and len(cur) >= need_bytes:
         voiced.append(bytes(cur))
-
     return voiced
-
 
 @router.post("/audio/transcribe-direct")
 async def gemini_audio_transcribe_direct(
@@ -457,11 +371,9 @@ async def gemini_audio_transcribe_direct(
     raw = await file.read()
     filename = (file.filename or "").lower()
     ctype = (file.content_type or "").lower()
-
     if ("wav" not in filename) and (not ctype.startswith("audio/wav")):
         raise HTTPException(400, "Please send WAV (mono/16-bit).")
 
-    # WAV -> PCM16
     try:
         pcm16, in_sr = pcm16_from_wav(raw)
     except Exception as e:
@@ -471,27 +383,27 @@ async def gemini_audio_transcribe_direct(
         pcm16 = audioop.ratecv(pcm16, 2, 1, in_sr, 16000, None)[0]
         in_sr = 16000
 
-    segments = vad_segments(
-        pcm16, sample_rate=in_sr, frame_ms=20, aggressiveness=2,
-        max_silence_ms=900, min_segment_ms=1200
-    )
+    segments = vad_segments(pcm16, sample_rate=in_sr, frame_ms=20, aggressiveness=2,
+                            max_silence_ms=900, min_segment_ms=1200)
 
     p = prompt.strip() if (prompt and prompt.strip()) else transcribe_prompt("tr")
 
     def streaming_gen():
-        parts = segments if segments else [pcm16]  
+        parts = segments if segments else [pcm16]
         for i, seg in enumerate(parts, start=1):
             wav_bytes = wav_from_pcm16(seg, sr=in_sr)
-            active_file = None
+            up = None
             try:
-                active_file = upload_and_wait_active(wav_bytes, "audio/wav")
-                _ensure_all_active([active_file])
+                up = upload_and_wait_active(wav_bytes, "audio/wav")
+                _ensure_all_active([up])
+                contents = [types.Content(
+                    role="user",
+                    parts=[types.Part(text=p),
+                           types.Part(file_data=types.FileData(file_uri=up.uri, mime_type="audio/wav"))]
+                )]
 
                 def _mk():
-                    return client.models.generate_content_stream(
-                        model=MODEL,
-                        contents=[p, active_file]
-                    )
+                    return client.models.generate_content_stream(model=MODEL, contents=contents)
 
                 emitted = False
                 for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
@@ -502,16 +414,14 @@ async def gemini_audio_transcribe_direct(
                         if cleaned:
                             emitted = True
                             yield cleaned
-
                 if emitted:
-                    yield "\n" 
-
+                    yield "\n"
             except Exception as e:
                 yield f"\n[ERROR segment {i}]: {e}\n"
             finally:
                 try:
-                    if active_file and getattr(active_file, "name", None):
-                        client.files.delete(name=active_file.name)
+                    if up and getattr(up, "name", None):
+                        client.files.delete(name=up.name)
                 except Exception:
                     pass
 
