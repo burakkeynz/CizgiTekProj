@@ -27,17 +27,41 @@ bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UserVerification(BaseModel):
     password: str                   # mevcut şifre
-    new_password: str = Field(min_length=8)  # min 8 (ek kontroller aşağıda)
+    new_password: str = Field(min_length=8)  # min 8
 
 class StatusUpdateRequest(BaseModel):
-    status: str  # "online" | "offline" | "meşgul" | "aramada"
+    status: str  # "online" | "offline" | "meşgul" | "aramada" | "in_call" | eşanlamlılar
 
 COMMON_WEAK = {"password", "123456", "qwerty", "111111", "letmein", "admin"}
-ALLOWED_STATUSES = {"online", "offline", "meşgul", "aramada"}
+
+# Kabul edilen normalize edilmiş durumlar
+ALLOWED_STATUSES = {"online", "offline", "meşgul", "in_call"}
+
+def normalize_status(s: str) -> str | None:
+    """
+    Çeşitli yazımları tek tipe indirger.
+    'aramada' ve 'in_call' -> 'in_call'
+    'busy' -> 'meşgul'
+    """
+    s = (s or "").strip().lower().replace("-", "_").replace(" ", "_")
+    mapping = {
+        "online": "online",
+        "offline": "offline",
+        "busy": "meşgul",
+        "meşgul": "meşgul",
+        "mesgul": "meşgul",
+        "in_call": "in_call",
+        "aramada": "in_call",
+        "calling": "in_call",
+    }
+    v = mapping.get(s)
+    if v in ALLOWED_STATUSES:
+        return v
+    return None
 
 def password_policy_errors(pw: str, user_model: Users | None = None) -> list[str]:
     """
-    Frontend'deki ölçerle uyumlu bir minimum politika:
+    Minimum politika:
       - En az 8 karakter
       - Küçük/Büyük/Rakam/Sembol sınıflarından en az 3'ü
       - Çok yaygın kalıplar reddedilir
@@ -90,13 +114,12 @@ async def change_password(
     if not user_model:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Mevcut şifre kontrolü
     if not bcrypt_context.verify(user_verification.password, user_model.hashed_password):
         raise HTTPException(status_code=401, detail="Mevcut şifre hatalı.")
 
-    # Yeni şifre mevcutla aynı olamaz
     if user_verification.password == user_verification.new_password:
         raise HTTPException(status_code=422, detail="Yeni şifre mevcut şifre ile aynı olamaz.")
+
     errs = password_policy_errors(user_verification.new_password, user_model)
     if errs:
         raise HTTPException(status_code=422, detail="; ".join(errs))
@@ -104,7 +127,7 @@ async def change_password(
     user_model.hashed_password = bcrypt_context.hash(user_verification.new_password)
     db.add(user_model)
     db.commit()
-    # 204 
+
 
 @router.get("/available", status_code=200)
 async def get_available_users(user: user_dependency, db: db_dependency):
@@ -136,14 +159,15 @@ async def update_status(
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    if status_update.status not in ALLOWED_STATUSES:
+    norm = normalize_status(status_update.status)
+    if not norm:
         raise HTTPException(status_code=422, detail="Geçersiz durum.")
 
     user_model = db.query(Users).filter(Users.id == user["id"]).first()
     if not user_model:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user_model.status = status_update.status
+    user_model.status = norm
     db.commit()
     db.refresh(user_model)
     return {"message": "Status updated successfully", "new_status": user_model.status}

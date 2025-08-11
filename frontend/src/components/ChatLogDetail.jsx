@@ -1,14 +1,24 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FiArrowLeft, FiFile, FiEye } from "react-icons/fi";
+import { FiArrowLeft, FiFile, FiEye, FiDownload } from "react-icons/fi";
 import FilePreviewModal from "./FilePreviewModal";
 import { useLanguage } from "./LanguageContext";
+import api from "../api";
+
+function getS3KeyFromUrl(url) {
+  if (!url) return "";
+  const i = url.indexOf(".amazonaws.com/");
+  if (i === -1) return url; // zaten key olabilir
+  return url.substring(i + ".amazonaws.com/".length);
+}
 
 function ChatLogDetail({ logs, currentUser }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const messagesRef = useRef(null);
-  const [preview, setPreview] = useState(null); // {fileType, fileUrl, fileName}
+  const [preview, setPreview] = useState(null); // {fileType, fileKey, fileName}
+  const [downloadingKey, setDownloadingKey] = useState(null);
+
   const { language } = useLanguage();
   const t = (en, tr) => (language === "tr" ? tr : en);
 
@@ -20,7 +30,7 @@ function ChatLogDetail({ logs, currentUser }) {
 
   const log = logs.find((log) => String(log.id) === String(id));
 
-  const messages = React.useMemo(() => {
+  const messages = useMemo(() => {
     if (!log) return [];
     if (Array.isArray(log.messages)) return log.messages;
     if (log.messages && typeof log.messages === "object") return [log.messages];
@@ -99,6 +109,21 @@ function ChatLogDetail({ logs, currentUser }) {
     );
   }
 
+  async function handleDownload(file) {
+    const key = getS3KeyFromUrl(file.url);
+    try {
+      setDownloadingKey(key);
+      const { data } = await api.get("/files/presign", {
+        params: { key, dl: true, name: file.name },
+      });
+      window.location.assign(data.url); // tarayıcı doğrudan indirme
+    } catch (e) {
+      // toast ekleyebilirim belki
+    } finally {
+      setDownloadingKey(null);
+    }
+  }
+
   if (!log) {
     return (
       <div style={{ padding: 32 }}>
@@ -154,6 +179,7 @@ function ChatLogDetail({ logs, currentUser }) {
           }
         `}
       </style>
+
       <div
         style={{
           padding: 32,
@@ -183,8 +209,9 @@ function ChatLogDetail({ logs, currentUser }) {
           }}
         >
           <FiArrowLeft size={20} />
-          Tüm Loglara Dön
+          {t("Back to Logs", "Tüm Loglara Dön")}
         </button>
+
         <h2
           style={{
             fontWeight: 700,
@@ -196,6 +223,7 @@ function ChatLogDetail({ logs, currentUser }) {
         >
           {t("Chat Details", "Sohbet Detayları")}
         </h2>
+
         <div
           style={{
             background: "var(--card-bg)",
@@ -208,7 +236,6 @@ function ChatLogDetail({ logs, currentUser }) {
             display: "flex",
             flexDirection: "column",
             alignItems: "stretch",
-            height: "auto",
             transition: "background 0.2s, box-shadow 0.2s",
           }}
         >
@@ -255,7 +282,7 @@ function ChatLogDetail({ logs, currentUser }) {
                   >
                     {msg.text}
 
-                    {msg.files && msg.files.length > 0 && (
+                    {msg.files?.length > 0 && (
                       <div
                         style={{
                           marginTop: 10,
@@ -264,63 +291,73 @@ function ChatLogDetail({ logs, currentUser }) {
                           flexWrap: "wrap",
                         }}
                       >
-                        {msg.files.map((file, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                              background: "#f2f4fa",
-                              borderRadius: 7,
-                              padding: "4px 8px",
-                              fontSize: 13,
-                              border: "1px solid #e3e7ee",
-                            }}
-                          >
-                            <FiFile style={{ marginRight: 2, fontSize: 15 }} />
-                            <span
+                        {msg.files.map((file, idx) => {
+                          const key = getS3KeyFromUrl(file.url);
+                          const isDownloading = downloadingKey === key;
+                          return (
+                            <div
+                              key={idx}
                               style={{
-                                cursor: "pointer",
-                                color: "#3a66e2",
-                                fontWeight: 600,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                background: "var(--input-bg)",
+                                borderRadius: 8,
+                                padding: "6px 10px",
+                                fontSize: 13,
+                                border: "1px solid var(--input-border)",
                               }}
-                              title={t("Preview file", "Dosyayı önizle")}
-                              onClick={() =>
-                                setPreview({
-                                  fileType: file.type,
-                                  fileUrl: file.url,
-                                  fileName: file.name,
-                                })
-                              }
                             >
-                              {file.name}
-                              <FiEye
+                              <FiFile style={{ opacity: 0.9 }} />
+                              {/* Önizleme */}
+                              <button
+                                onClick={() =>
+                                  setPreview({
+                                    fileType: file.type,
+                                    fileKey: key,
+                                    fileName: file.name,
+                                  })
+                                }
+                                title={t("Preview file", "Dosyayı önizle")}
                                 style={{
-                                  marginLeft: 5,
-                                  fontSize: 15,
-                                  verticalAlign: "middle",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "#3a66e2",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
                                 }}
-                              />
-                            </span>
-                            <a
-                              href={file.url}
-                              download={file.name}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                marginLeft: 8,
-                                color: "#007bff",
-                                textDecoration: "underline",
-                                fontSize: 12,
-                                fontWeight: 400,
-                              }}
-                              title={t("Download", "İndir")}
-                            >
-                              {t("Download", "İndir")}
-                            </a>
-                          </div>
-                        ))}
+                              >
+                                {file.name}
+                                <FiEye />
+                              </button>
+
+                              {/* İndir */}
+                              <button
+                                onClick={() => handleDownload(file)}
+                                disabled={isDownloading}
+                                title={t("Download", "İndir")}
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "#2a6df5",
+                                  fontSize: 13,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <FiDownload />
+                                {isDownloading
+                                  ? t("Downloading...", "İndiriliyor...")
+                                  : t("Download", "İndir")}
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -328,10 +365,11 @@ function ChatLogDetail({ logs, currentUser }) {
               );
             })}
           </div>
+
           <div
             style={{ marginTop: 18, color: "var(--text-muted)", fontSize: 13 }}
           >
-            {t("Created At:", "Oluşturulma:")}
+            {t("Created At:", "Oluşturulma:")}{" "}
             {log.created_at
               ? new Date(log.created_at).toLocaleString("tr-TR")
               : "-"}
@@ -342,7 +380,7 @@ function ChatLogDetail({ logs, currentUser }) {
       {preview && (
         <FilePreviewModal
           fileType={preview.fileType}
-          fileUrl={preview.fileUrl}
+          fileKey={preview.fileKey} //
           fileName={preview.fileName}
           onClose={() => setPreview(null)}
         />

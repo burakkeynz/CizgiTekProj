@@ -8,7 +8,12 @@ import remarkGfm from "remark-gfm";
 
 function formatTR(iso) {
   try {
-    return new Date(iso).toLocaleString("tr-TR", {
+    if (!iso) return "-";
+    let s = String(iso).trim().replace(" ", "T");
+    if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += "Z";
+    const d = new Date(s);
+    if (isNaN(d)) return iso || "-";
+    return d.toLocaleString("tr-TR", {
       timeZone: "Europe/Istanbul",
       year: "numeric",
       month: "2-digit",
@@ -22,7 +27,6 @@ function formatTR(iso) {
   }
 }
 
-// Eski kayıtlardaki [laughter] vb. etiketleri temizlik
 const stripSquareTags = (s) => (s || "").replace(/\[[^\]]+\]/g, "").trim();
 
 export default function SessionDetail() {
@@ -89,7 +93,30 @@ export default function SessionDetail() {
   return (
     <>
       <style>{`
-        .report-root { padding: 32px; max-width: 960px; margin: 0 auto; }
+        /* Scrollable orta alan — Sessions.jsx ile aynı */
+        .sessions-scrollable {
+          height: 100vh;
+          overflow-y: auto;
+          padding: 24px;
+          background: var(--bg-main);
+        }
+        .sessions-scrollable {
+          scrollbar-width: thin;
+          scrollbar-color: var(--border-card) var(--bg-main);
+        }
+        .sessions-scrollable::-webkit-scrollbar {
+          width: 7px;
+          background: var(--bg-main);
+        }
+        .sessions-scrollable::-webkit-scrollbar-thumb {
+          background: var(--border-card);
+          border-radius: 10px;
+        }
+        .sessions-scrollable::-webkit-scrollbar-thumb:hover {
+          background: var(--accent-muted);
+        }
+
+        .report-root { max-width: 960px; margin: 0 auto; }
         .report-card {
           background: var(--card-bg);
           border: 1px solid var(--card-border);
@@ -108,11 +135,6 @@ export default function SessionDetail() {
           font-size: 22px;
           font-weight: 800;
           letter-spacing: .2px;
-        }
-        .report-sub {
-          margin-top: 4px;
-          font-size: 13px;
-          color: var(--text-muted);
         }
         .report-body { padding: 18px 20px; }
 
@@ -145,96 +167,93 @@ export default function SessionDetail() {
         .btn-outline { background: transparent; color: #cfe0ff; border: 1px solid #3b4663; }
       `}</style>
 
-      <div className="report-root">
-        <button
-          onClick={() => navigate("/sessions")}
-          style={{
-            background: "var(--accent-muted)",
-            color: "var(--accent-color)",
-            border: "none",
-            borderRadius: 10,
-            padding: "10px 16px",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 18,
-            fontWeight: 600,
-          }}
-        >
-          <FiArrowLeft /> {t("Back to Sessions", "Kayıtlara Dön")}
-        </button>
+      <div className="sessions-scrollable">
+        <div className="report-root">
+          <button
+            onClick={() => navigate("/sessions")}
+            style={{
+              background: "var(--accent-muted)",
+              color: "var(--accent-color)",
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 16px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 18,
+              fontWeight: 600,
+            }}
+          >
+            <FiArrowLeft /> {t("Back to Sessions", "Kayıtlara Dön")}
+          </button>
 
-        <div className="report-card">
-          <div className="report-header">
-            <h1 className="report-title">
-              {t("Session Transcript", "Görüşme Transkripti")} #{id}
-            </h1>
-            {log && (
-              <div className="report-sub">
-                {t("Created", "Oluşturma")}: {formatTR(log?.created_at)}
-              </div>
-            )}
-          </div>
+          <div className="report-card">
+            <div className="report-header">
+              <h1 className="report-title">
+                {t("Session Transcript", "Görüşme Transkripti")}
+              </h1>
+              {/* Oluşturma/Generated satırı kaldırıldı */}
+            </div>
 
-          <div className="report-body">
-            {loading ? (
-              <div style={{ color: "var(--text-muted)" }}>
-                {t("Loading...", "Yükleniyor...")}
-              </div>
-            ) : !log ? (
-              <div style={{ color: "#c55" }}>
-                {t("Not found.", "Bulunamadı.")}
-              </div>
-            ) : (
-              <>
-                {/* Meta tablo */}
-                <div className="meta-table">
-                  <div className="meta-label">
-                    {t("Participants", "Katılımcılar")}
-                  </div>
-                  <div className="meta-value">
-                    {log.user1_name || "-"} • {log.user2_name || "-"}
-                  </div>
-
-                  <div className="meta-label">
-                    {t("Date/Time", "Tarih/Saat")}
-                  </div>
-                  <div className="meta-value">
-                    {formatTR(log.session_time_stamp)}
-                  </div>
+            <div className="report-body">
+              {loading ? (
+                <div style={{ color: "var(--text-muted)" }}>
+                  {t("Loading...", "Yükleniyor...")}
                 </div>
-
-                {/* Transkript bölümü */}
-                <div className="section markdown">
-                  {transcriptMd ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {transcriptMd}
-                    </ReactMarkdown>
-                  ) : (
-                    <div style={{ color: "var(--text-muted)" }}>
-                      {t("No transcript.", "Transkript boş.")}
+              ) : !log ? (
+                <div style={{ color: "#c55" }}>
+                  {t("Not found.", "Bulunamadı.")}
+                </div>
+              ) : (
+                <>
+                  {/* Meta tablo */}
+                  <div className="meta-table">
+                    <div className="meta-label">
+                      {t("Participants", "Katılımcılar")}
                     </div>
-                  )}
-                </div>
+                    <div className="meta-value">
+                      {log.user1_name || "-"} • {log.user2_name || "-"}
+                    </div>
 
-                {/* Aksiyonlar */}
-                <div className="section" style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => navigate(`/sessions/${id}/summary`)}
-                    className="btn btn-primary"
-                  >
-                    {t("View Summary", "Özeti Gör")}
-                  </button>
-                  <button
-                    onClick={handleDownloadPdf}
-                    className="btn btn-outline"
-                  >
-                    {t("Download Summary PDF", "Özet PDF İndir")}
-                  </button>
-                </div>
-              </>
-            )}
+                    <div className="meta-label">
+                      {t("Date/Time", "Tarih/Saat")}
+                    </div>
+                    <div className="meta-value">
+                      {formatTR(log.session_time_stamp)}
+                    </div>
+                  </div>
+
+                  {/* Transkript bölümü */}
+                  <div className="section markdown">
+                    {transcriptMd ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {transcriptMd}
+                      </ReactMarkdown>
+                    ) : (
+                      <div style={{ color: "var(--text-muted)" }}>
+                        {t("No transcript.", "Transkript boş.")}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="section" style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => navigate(`/sessions/${id}/summary`)}
+                      className="btn btn-primary"
+                    >
+                      {t("View Summary", "Özeti Gör")}
+                    </button>
+                    <button
+                      onClick={handleDownloadPdf}
+                      className="btn btn-outline"
+                    >
+                      {t("Download Summary PDF", "Özet PDF İndir")}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

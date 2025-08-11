@@ -7,7 +7,7 @@ import { useTheme } from "./ThemeContext";
 import FilePreviewModal from "./FilePreviewModal";
 import { MessageList } from "@chatscope/chat-ui-kit-react";
 
-//yeni importlarım, mic ile kaydetme için
+// mic ile kayıt
 import { FiMic, FiStopCircle } from "react-icons/fi";
 import { startStreamRecording } from "../utils/webrtc";
 
@@ -66,6 +66,7 @@ function Assistant({ onNewLog }) {
   const { theme } = useTheme();
   const { language } = useLanguage();
   const t = (en, tr) => (language === "tr" ? tr : en);
+
   const initialMessage = {
     role: "model",
     text: t(
@@ -73,6 +74,7 @@ function Assistant({ onNewLog }) {
       "Merhaba! Size nasıl yardımcı olabilirim?"
     ),
   };
+
   const [isOpen, setIsOpen] = useState(() => {
     try {
       const saved = sessionStorage.getItem("ai_assistant_open");
@@ -90,10 +92,11 @@ function Assistant({ onNewLog }) {
       return [initialMessage];
     }
   });
+
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  //yeni statelerim kaydetme için
+  // mic state
   const [isRecording, setIsRecording] = useState(false);
   const recRef = useRef(null);
   const gumStreamRef = useRef(null);
@@ -102,34 +105,29 @@ function Assistant({ onNewLog }) {
     setIsOpen(false);
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(false));
   }, [location]);
+
   useEffect(() => {
     const en = "Hi! How can I help you?";
     const tr = "Merhaba! Size nasıl yardımcı olabilirim?";
     const translated = language === "tr" ? tr : en;
 
-    setMessages((prevMessages) => {
-      if (prevMessages.length === 0) return prevMessages;
-
-      const firstMsg = prevMessages[0];
-      if (firstMsg.role !== "model") return prevMessages;
-
-      if (firstMsg.text === translated) return prevMessages;
-
-      const updatedMessages = [
-        { ...firstMsg, text: translated },
-        ...prevMessages.slice(1),
-      ];
-
+    setMessages((prev) => {
+      if (!prev.length) return prev;
+      const first = prev[0];
+      if (first.role !== "model") return prev;
+      if (first.text === translated) return prev;
+      const updated = [{ ...first, text: translated }, ...prev.slice(1)];
       try {
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(updatedMessages));
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(updated));
       } catch {}
-
-      return updatedMessages;
+      return updated;
     });
   }, [language]);
 
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  // --- kritik değişiklik: loading'i ikiye ayırdık
+  const [isSending, setIsSending] = useState(false); // upload + request hazırlığı
+  const [isStreaming, setIsStreaming] = useState(false); // modelden stream gelirken
   const [activeTool, setActiveTool] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -148,6 +146,7 @@ function Assistant({ onNewLog }) {
   useEffect(() => {
     sessionStorage.setItem("ai_assistant_open", JSON.stringify(isOpen));
   }, [isOpen]);
+
   useEffect(() => {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages));
@@ -174,7 +173,7 @@ function Assistant({ onNewLog }) {
           created_at: new Date().toISOString(),
           optimistic: true,
         };
-        if (onNewLog) onNewLog(newLog);
+        onNewLog?.(newLog);
         api.post("/chatlogs/", {
           messages: newLog.messages,
           ended_at: newLog.created_at,
@@ -216,9 +215,7 @@ function Assistant({ onNewLog }) {
     try {
       recRef.current?.stop?.();
       const file = await recRef.current?.filePromise;
-      if (file) {
-        setSelectedFiles((prev) => [...prev, file]);
-      }
+      if (file) setSelectedFiles((prev) => [...prev, file]);
     } catch (e) {
       console.error("micStop error:", e);
     } finally {
@@ -230,8 +227,13 @@ function Assistant({ onNewLog }) {
   }
 
   const sendMessage = async () => {
-    if (loading || (!input.trim() && selectedFiles.length === 0)) return;
-    setLoading(true);
+    if (
+      isSending ||
+      isStreaming ||
+      (!input.trim() && selectedFiles.length === 0)
+    )
+      return;
+    setIsSending(true);
 
     let uploadedFiles = [];
     if (selectedFiles.length > 0) {
@@ -246,7 +248,7 @@ function Assistant({ onNewLog }) {
         });
         uploadedFiles = await Promise.all(fileUploadPromises);
       } catch (err) {
-        setLoading(false);
+        setIsSending(false);
         alert(
           t(
             "An error occurred while uploading the file!",
@@ -281,13 +283,14 @@ function Assistant({ onNewLog }) {
       const formData = new FormData();
       const BASE_URL = process.env.REACT_APP_API_URL;
 
+      let endpoint;
       if (hasAudio && otherFiles.length === 0) {
         formData.append(
           "prompt",
           input?.trim() ? input : "Generate a transcript of the speech."
         );
         audioFiles.forEach((file) => formData.append("files", file.url));
-        var endpoint = "/gemini/audio/transcribe";
+        endpoint = "/gemini/audio/transcribe";
       } else {
         formData.append("message", input || "");
         uploadedFiles.forEach((file) => formData.append("files", file.url));
@@ -296,7 +299,7 @@ function Assistant({ onNewLog }) {
           activeTool === "search" ? "true" : "false"
         );
         formData.append("contents", JSON.stringify(allMsgs));
-        var endpoint = "/gemini/chat/stream";
+        endpoint = "/gemini/chat/stream";
       }
 
       const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -304,6 +307,10 @@ function Assistant({ onNewLog }) {
         body: formData,
         credentials: "include",
       });
+
+      // request çıktı; artık isSending bitti, stream başlıyor
+      setIsSending(false);
+      setIsStreaming(true);
 
       if (!response.body) throw new Error("Sunucudan yanıt alınamadı.");
       const reader = response.body.getReader();
@@ -347,7 +354,8 @@ function Assistant({ onNewLog }) {
         ];
       });
     } finally {
-      setLoading(false);
+      setIsSending(false);
+      setIsStreaming(false);
       setActiveTool(null);
     }
   };
@@ -355,29 +363,17 @@ function Assistant({ onNewLog }) {
   const handleInputKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (!isSending && !isStreaming) sendMessage();
     }
   };
 
-  const handleFilePreview = async (file) => {
+  // ---- ÖNİZLEME: sadece S3 key çıkar ve modal'a ver ----
+  const handleFilePreview = (file) => {
     setPreviewLoading(true);
-    let fileUrl = file.url;
-    try {
-      let key = file.url;
-      if (file.url.includes("amazonaws.com")) key = getS3KeyFromUrl(file.url);
-      const res = await api.get(`/files/presign`, { params: { key } });
-      fileUrl = res.data.url;
-    } catch (err) {
-      alert(
-        t(
-          "Failed to generate file preview link.",
-          "Dosya önizleme linki alınamadı."
-        )
-      );
-      setPreviewLoading(false);
-      return;
-    }
-    setPreview({ fileType: file.type, fileUrl, fileName: file.name });
+    const key = file.url.includes("amazonaws.com")
+      ? getS3KeyFromUrl(file.url)
+      : file.url; // backend upload doğrudan key döndürüyorsa url zaten key olabilir
+    setPreview({ fileType: file.type, fileKey: key, fileName: file.name });
     setPreviewLoading(false);
   };
 
@@ -443,7 +439,6 @@ function Assistant({ onNewLog }) {
           </span>
         );
       }
-      // Web search için
       if (activeTool === "search")
         return (
           <span
@@ -531,7 +526,6 @@ function Assistant({ onNewLog }) {
             >
               <div
                 style={{
-                  // Sadece kendi mesajların sağa koyma
                   alignItems: msg.role === "user" ? "flex-end" : "flex-start",
                   display: "flex",
                   flexDirection: "column",
@@ -641,7 +635,7 @@ function Assistant({ onNewLog }) {
       {preview && (
         <FilePreviewModal
           fileType={preview.fileType}
-          fileUrl={preview.fileUrl}
+          fileKey={preview.fileKey} // önemli: fileUrl değil fileKey gönderiyoruz
           fileName={preview.fileName}
           onClose={() => setPreview(null)}
         />
@@ -739,6 +733,7 @@ function Assistant({ onNewLog }) {
             />
           </label>
         </div>
+
         {selectedFiles.length > 0 && (
           <div
             style={{
@@ -791,12 +786,13 @@ function Assistant({ onNewLog }) {
             ))}
           </div>
         )}
+
         <div style={{ position: "relative", marginBottom: 8 }}>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleInputKeyDown}
-            disabled={loading && !isRecording} // kayıt sürerken mici durdurabilelim
+            disabled={isRecording} // <— sadece kayıt sırasında kilitli
             placeholder={t("Ask Assistant...", "Asistana sor...")}
             rows={2}
             style={{
@@ -827,7 +823,7 @@ function Assistant({ onNewLog }) {
                 ? t("Stop recording", "Kaydı durdur")
                 : t("Start recording", "Kaydı başlat")
             }
-            disabled={loading && !isRecording}
+            disabled={isSending && !isRecording}
             style={{
               position: "absolute",
               right: 8,
@@ -861,7 +857,7 @@ function Assistant({ onNewLog }) {
         >
           <button
             onClick={sendMessage}
-            disabled={loading}
+            disabled={isSending || isStreaming}
             style={{
               flex: 1,
               background: "var(--accent-color)",

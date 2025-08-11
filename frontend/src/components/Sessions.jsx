@@ -7,7 +7,12 @@ const TZ = "Europe/Istanbul";
 
 function formatDate(ts, lang = "tr") {
   try {
-    return new Date(ts).toLocaleString(lang === "tr" ? "tr-TR" : "en-US", {
+    if (!ts) return "";
+    let s = String(ts).trim().replace(" ", "T");
+    if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += "Z";
+    const d = new Date(s);
+    if (isNaN(d)) return ts || "";
+    return d.toLocaleString(lang === "tr" ? "tr-TR" : "en-US", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -20,7 +25,7 @@ function formatDate(ts, lang = "tr") {
   }
 }
 
-// Köşeli parantezli tag'leri ve gürültü ifadelerini temizle
+// Köşeli parantezli tagleri ve gürültü ifadelerini temizleme şeyi
 const BRACKET_TAGS = /\[[^\]]+\]/g;
 const NOISE_PHRASES =
   /\b(?:no speech detected|typing sounds?|high[- ]pitched(?: tone| ringing| beep)?|beep|sound of a (?:machine|device)|machine\/device operating)\b/gi;

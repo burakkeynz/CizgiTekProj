@@ -1,29 +1,28 @@
-# backend/prompts.py
 import re
 
-# ----- TRANSCRIBE -----
 PROMPT_TRANSCRIBE_TR = (
     "Sen bir konuşma-metne dönüştürücüsün.\n"
-    "Görev: Seste sadece anlaşılır İNSAN konuşmasını yazıya çevir.\n"
+    "Görev: Seste SADECE anlaşılır İNSAN konuşmasını yazıya çevir.\n"
     "Kurallar:\n"
-    "- Çıktı yalın DÜZ METİN olmalı; köşeli parantezli etiket üretme "
-    "(ör. [no clear speech], [laughter], [music]).\n"
+    "- Çıktı yalın DÜZ METİN olmalı; açıklama/özet/bullet/başlık veya "
+    "köşeli parantezli etiket üretme (örn. [no clear speech], [laughter], [music]).\n"
+    "- 'no speech detected', 'background noise', 'the audio contains…' gibi "
+    "teşhis/yorum cümleleri ASLA yazma.\n"
     "- Anlaşılır konuşma yoksa TAMAMEN BOŞ döndür (hiçbir şey yazma).\n"
-    "- Uydurma yapma; emin olmadığın kelimeyi atla.\n"
-    "- Türkçeyi koru; varsa İngilizce kelimeleri duyduğun gibi yaz. "
-    "Normal noktalama kullan.\n"
+    "- Uydurma yapma; emin olmadığın kelimeyi atla. Normal noktalama kullan.\n"
     "Sadece metni döndür."
 )
 
 PROMPT_TRANSCRIBE_EN = (
     "You are a speech-to-text engine.\n"
-    "Task: Transcribe only intelligible HUMAN speech from the audio.\n"
+    "Task: Transcribe ONLY intelligible HUMAN speech from the audio.\n"
     "Rules:\n"
-    "- Output MUST be plain text only; do NOT include bracketed annotations "
-    "(e.g., [no clear speech], [laughter], [music]).\n"
+    "- Output MUST be plain text only; do NOT include explanations, bullets, "
+    "headings, or bracketed annotations (e.g., [no clear speech], [laughter], [music]).\n"
+    "- Never write diagnostic sentences like 'no speech detected', 'background noise', "
+    "or 'the audio contains…'.\n"
     "- If there is no intelligible speech, return an EMPTY string.\n"
-    "- Do not hallucinate; skip words you are unsure of.\n"
-    "- Preserve Turkish; keep English words as spoken. Use normal punctuation.\n"
+    "- Do not hallucinate; skip uncertain words. Use normal punctuation.\n"
     "Return ONLY the transcript text."
 )
 
@@ -33,10 +32,53 @@ def transcribe_prompt(lang: str | None = "tr") -> str:
 _TAGS = re.compile(r"\[[^\]]+\]")
 
 def postprocess_transcript(text: str | None) -> str:
-    s = _TAGS.sub("", text or "")
-    return " ".join(s.split()).strip()
+    s = text or ""
 
-# ----- SUMMARY (Markdown) -----
+    # 1) köşeli etiketleri temizle
+    s = _TAGS.sub(" ", s)
+
+    # 2) ek temizlik (YENİ) — fonksiyon içi, yeni global yok
+    code_fences = re.compile(r"^```.*?$|```$", re.MULTILINE)
+    bullets = re.compile(r"^\s*(?:[-*•]\s+)", re.MULTILINE)
+    role_label = re.compile(r"^\s*(?:speaker\s*\d+|user|assistant|agent|model)\s*:\s*", re.IGNORECASE | re.MULTILINE)
+    commenty_lines = re.compile(
+        r"""
+        ^\s*(?:the\s+)?audio\b.*$|
+        ^\s*no\s+(?:\w+\s+)*speech.*$|
+        ^\s*background\s+noise.*$|
+        ^\s*only\s+noise.*$|
+        ^\s*(?:typing|beep|ringing|music)\b.*$
+        """,
+        re.IGNORECASE | re.MULTILINE | re.VERBOSE,
+    )
+    noise_phrases = re.compile(
+        r"""
+        \b(
+           no\s+(?:clear|discernible)?\s*speech(?:\s+detected)?|
+           background\s+noise|
+           (?:the\s+)?audio(?:\s+primarily)?\s+contains(?:\s+only)?\s+(?:noise|sounds?)|
+           typing\s+sounds?|
+           beep(?:ing)?|
+           high[-\s]?pitched\s+(?:tone|ringing|beep)|
+           sound(?:s)?\s+of\s+(?:a\s)?(?:machine|device|vehicle|vehicles)|
+           music\s+only
+        )\b
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
+    s = code_fences.sub(" ", s)
+    s = bullets.sub("", s)
+    s = role_label.sub("", s)
+    s = commenty_lines.sub("", s)
+    s = noise_phrases.sub(" ", s)
+
+    s = " ".join(s.split()).strip()
+
+    if not s or all(ch in "-–—•.,;:!?()[]{}" for ch in s):
+        return ""
+    return s
+
 def _mk_summary_prompt_tr(participants: list[str], when_str: str) -> str:
     plist = ", ".join([p for p in participants if p])
     return (

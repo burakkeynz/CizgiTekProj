@@ -8,7 +8,12 @@ import remarkGfm from "remark-gfm";
 
 function formatTR(iso) {
   try {
-    return new Date(iso).toLocaleString("tr-TR", {
+    if (!iso) return "-";
+    let s = String(iso).trim().replace(" ", "T");
+    if (!/[zZ]|[+\-]\d{2}:\d{2}$/.test(s)) s += "Z";
+    const d = new Date(s);
+    if (isNaN(d)) return iso || "-";
+    return d.toLocaleString("tr-TR", {
       timeZone: "Europe/Istanbul",
       year: "numeric",
       month: "2-digit",
@@ -67,7 +72,6 @@ export default function SessionSummary() {
   React.useEffect(() => {
     fetchMeta();
     fetchSummary(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, language]);
 
   function handleCopy() {
@@ -97,7 +101,30 @@ export default function SessionSummary() {
   return (
     <>
       <style>{`
-        .report-root { padding: 32px; max-width: 960px; margin: 0 auto; }
+        /* Scrollable orta alan — Sessions.jsx ile aynı */
+        .sessions-scrollable {
+          height: 100vh;
+          overflow-y: auto;
+          padding: 24px;
+          background: var(--bg-main);
+        }
+        .sessions-scrollable {
+          scrollbar-width: thin;
+          scrollbar-color: var(--border-card) var(--bg-main);
+        }
+        .sessions-scrollable::-webkit-scrollbar {
+          width: 7px;
+          background: var(--bg-main);
+        }
+        .sessions-scrollable::-webkit-scrollbar-thumb {
+          background: var(--border-card);
+          border-radius: 10px;
+        }
+        .sessions-scrollable::-webkit-scrollbar-thumb:hover {
+          background: var(--accent-muted);
+        }
+
+        .report-root { max-width: 960px; margin: 0 auto; }
         .report-card {
           background: var(--card-bg);
           border: 1px solid var(--card-border);
@@ -111,7 +138,6 @@ export default function SessionSummary() {
           background: linear-gradient(0deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
         }
         .report-title { margin: 0; color: var(--text-main); font-size: 22px; font-weight: 800; letter-spacing: .2px; }
-        .report-sub { margin-top: 4px; font-size: 13px; color: var(--text-muted); }
         .report-body { padding: 18px 20px; }
 
         .meta-table { display: grid; grid-template-columns: 180px 1fr; row-gap: 6px; }
@@ -132,99 +158,95 @@ export default function SessionSummary() {
         .btn-outline { background: transparent; color: #cfe0ff; border: 1px solid #3b4663; }
       `}</style>
 
-      <div className="report-root">
-        <button
-          onClick={() => navigate("/sessions")}
-          style={{
-            background: "var(--accent-muted)",
-            color: "var(--accent-color)",
-            border: "none",
-            borderRadius: 10,
-            padding: "10px 16px",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 18,
-            fontWeight: 600,
-          }}
-        >
-          <FiArrowLeft /> {t("Back to Sessions", "Kayıtlara Dön")}
-        </button>
+      <div className="sessions-scrollable">
+        <div className="report-root">
+          <button
+            onClick={() => navigate("/sessions")}
+            style={{
+              background: "var(--accent-muted)",
+              color: "var(--accent-color)",
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 16px",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 18,
+              fontWeight: 600,
+            }}
+          >
+            <FiArrowLeft /> {t("Back to Sessions", "Kayıtlara Dön")}
+          </button>
 
-        <div className="report-card">
-          <div className="report-header">
-            <h1 className="report-title">
-              {t("Session Summary", "Görüşme Özeti")} #{id}
-            </h1>
-            {meta && (
-              <div className="report-sub">
-                {t("Generated", "Oluşturulma")} • {formatTR(meta?.created_at)}
-              </div>
-            )}
-          </div>
-
-          <div className="report-body">
-            {/* Meta tablo */}
-            <div className="meta-table">
-              <div className="meta-label">
-                {t("Participants", "Katılımcılar")}
-              </div>
-              <div className="meta-value">
-                {meta?.user1_name || "-"} • {meta?.user2_name || "-"}
-              </div>
-
-              <div className="meta-label">{t("Date/Time", "Tarih/Saat")}</div>
-              <div className="meta-value">
-                {meta?.session_time_stamp
-                  ? formatTR(meta.session_time_stamp)
-                  : "-"}
-              </div>
+          <div className="report-card">
+            <div className="report-header">
+              <h1 className="report-title">
+                {t("Session Summary", "Görüşme Özeti")}
+              </h1>
+              {/* Oluşturulma zamanı satırı kaldırıldı */}
             </div>
 
-            {/* Özet (Markdown) */}
-            <div className="section markdown">
-              {error ? (
-                <div style={{ color: "#e57373", marginBottom: 10 }}>
-                  {error}
+            <div className="report-body">
+              {/* Meta tablo */}
+              <div className="meta-table">
+                <div className="meta-label">
+                  {t("Participants", "Katılımcılar")}
                 </div>
-              ) : loading ? (
-                t("Generating summary...", "Özet oluşturuluyor...")
-              ) : summary ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {summary}
-                </ReactMarkdown>
-              ) : (
-                t("No summary yet.", "Henüz özet yok.")
-              )}
-            </div>
+                <div className="meta-value">
+                  {meta?.user1_name || "-"} • {meta?.user2_name || "-"}
+                </div>
 
-            {/* Aksiyonlar */}
-            <div className="section" style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => fetchSummary(true)}
-                className="btn btn-primary"
-                disabled={loading}
-              >
-                {loading
-                  ? t("Generating...", "Oluşturuluyor...")
-                  : t("Refresh Summary", "Özeti Yenile")}
-              </button>
-              <button
-                onClick={handleCopy}
-                className="btn btn-ghost"
-                disabled={!summary}
-              >
-                {t("Copy", "Kopyala")}
-              </button>
-              {summary && (
+                <div className="meta-label">{t("Date/Time", "Tarih/Saat")}</div>
+                <div className="meta-value">
+                  {meta?.session_time_stamp
+                    ? formatTR(meta.session_time_stamp)
+                    : "-"}
+                </div>
+              </div>
+
+              <div className="section markdown">
+                {error ? (
+                  <div style={{ color: "#e57373", marginBottom: 10 }}>
+                    {error}
+                  </div>
+                ) : loading ? (
+                  t("Generating summary...", "Özet oluşturuluyor...")
+                ) : summary ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {summary}
+                  </ReactMarkdown>
+                ) : (
+                  t("No summary yet.", "Henüz özet yok.")
+                )}
+              </div>
+
+              <div className="section" style={{ display: "flex", gap: 8 }}>
                 <button
-                  onClick={() => handleDownloadPdf(false)}
-                  className="btn btn-outline"
+                  onClick={() => fetchSummary(true)}
+                  className="btn btn-primary"
+                  disabled={loading}
                 >
-                  {t("Download PDF", "PDF İndir")}
+                  {loading
+                    ? t("Generating...", "Oluşturuluyor...")
+                    : t("Refresh Summary", "Özeti Yenile")}
                 </button>
-              )}
+                <button
+                  onClick={handleCopy}
+                  className="btn btn-ghost"
+                  disabled={!summary}
+                >
+                  {t("Copy", "Kopyala")}
+                </button>
+                {summary && (
+                  <button
+                    onClick={() => handleDownloadPdf(false)}
+                    className="btn btn-outline"
+                  >
+                    {t("Download PDF", "PDF İndir")}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

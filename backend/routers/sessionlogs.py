@@ -27,7 +27,26 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+import pytz
+
 router = APIRouter(prefix="/sessionlogs", tags=["sessionlogs"])
+
+TR_TZ = pytz.timezone("Europe/Istanbul")
+UTC = pytz.UTC 
+
+def now_tr() -> datetime:
+    return datetime.now(TR_TZ)
+
+def as_tr(dt: datetime | None) -> datetime | None:
+    """
+    Tüm tarihleri Europe/Istanbul'a çevir.
+    Not: Naive (tz'siz) datetime gelirse UTC varsay (eski kayıtlar için kritik).
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = UTC.localize(dt)   
+    return dt.astimezone(TR_TZ)
 
 _TR_MAP = str.maketrans({
     "ı":"i","İ":"I","ş":"s","Ş":"S","ç":"c","Ç":"C",
@@ -57,13 +76,12 @@ def _summary_to_plain(cipher_or_plain: Optional[str], db: Session | None = None,
     if not s:
         return ""
     try:
-        parts = decrypt_message(s)  
+        parts = decrypt_message(s)
         return "\n".join(
             p["text"] if isinstance(p, dict) and "text" in p else str(p)
             for p in (parts or [])
         ).strip()
     except Exception:
-
         plain = s
         if db is not None and row is not None:
             try:
@@ -110,7 +128,8 @@ def summary_text_to_pdf_bytes(title: str, subtitle_lines: List[str], body_text: 
 
 class SessionLogCreate(BaseModel):
     user2_id: int
-    session_time_stamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # UTC yerine TR default
+    session_time_stamp: datetime = Field(default_factory=now_tr)
     transcript: dict | list | str
 
 class SessionLogOut(BaseModel):
@@ -154,10 +173,13 @@ def create_session_log(
     _check_users(db, user1_id, payload.user2_id)
 
     encrypted = encrypt_message(payload.transcript)
+
+    ts_tr = as_tr(payload.session_time_stamp)
+
     row = SessionLog(
         user1_id=user1_id,
         user2_id=payload.user2_id,
-        session_time_stamp=payload.session_time_stamp,
+        session_time_stamp=ts_tr,
         transcript=encrypted,
     )
     db.add(row); db.commit(); db.refresh(row)
@@ -171,10 +193,10 @@ def create_session_log(
         user2_id=row.user2_id,
         user1_name=_display_name(u1),
         user2_name=_display_name(u2),
-        session_time_stamp=row.session_time_stamp,
+        session_time_stamp=as_tr(row.session_time_stamp),  # TR
         transcript=decrypt_message(row.transcript),
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        created_at=as_tr(row.created_at),                  # TR
+        updated_at=as_tr(row.updated_at),                  # TR
     )
 
 @router.get("/{log_id}", response_model=SessionLogOut)
@@ -201,10 +223,10 @@ def get_session_log(
         user2_id=row.user2_id,
         user1_name=_display_name(u1),
         user2_name=_display_name(u2),
-        session_time_stamp=row.session_time_stamp,
+        session_time_stamp=as_tr(row.session_time_stamp),
         transcript=decrypt_message(row.transcript),
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        created_at=as_tr(row.created_at),
+        updated_at=as_tr(row.updated_at),
     )
 
 @router.get("/", response_model=List[SessionLogOut])
@@ -241,10 +263,10 @@ def list_session_logs(
             user2_id=r.user2_id,
             user1_name=umap.get(r.user1_id),
             user2_name=umap.get(r.user2_id),
-            session_time_stamp=r.session_time_stamp,
+            session_time_stamp=as_tr(r.session_time_stamp),  # TR
             transcript=decrypt_message(r.transcript),
-            created_at=r.created_at,
-            updated_at=r.updated_at,
+            created_at=as_tr(r.created_at),                  # TR
+            updated_at=as_tr(r.updated_at),                  # TR
         ) for r in rows
     ]
 
@@ -281,7 +303,6 @@ def summarize_session_log(
     if me["id"] not in (row.user1_id, row.user2_id):
         raise HTTPException(403, "Forbidden")
 
-
     if not force and (row.summary and row.summary.strip()):
         return {"summary": _summary_to_plain(row.summary, db, row)}
 
@@ -291,8 +312,7 @@ def summarize_session_log(
         _display_name(u1) or f"#{row.user1_id}",
         _display_name(u2) or f"#{row.user2_id}",
     ]
-    when_str = str(row.session_time_stamp)
-
+    when_str = as_tr(row.session_time_stamp).strftime("%d/%m/%Y %H:%M")  # TR
 
     parts = decrypt_message(row.transcript)
     text = "\n".join(
@@ -335,7 +355,7 @@ def summary_pdf(
             _display_name(u1) or f"#{row.user1_id}",
             _display_name(u2) or f"#{row.user2_id}",
         ]
-        when_str = str(row.session_time_stamp)
+        when_str = as_tr(row.session_time_stamp).strftime("%d/%m/%Y %H:%M")  # TR
 
         parts = decrypt_message(row.transcript)
         text = "\n".join(
@@ -354,7 +374,10 @@ def summary_pdf(
         db.add(row); db.commit()
 
     title = "Görüşme Özeti" if lang == "tr" else "Session Summary"
-    subtitle = [f"Log ID: {row.id}", f"Tarih: {row.session_time_stamp}"]
+    subtitle = [
+        f"Log ID: {row.id}",
+        f"Tarih: {as_tr(row.session_time_stamp).strftime('%d/%m/%Y %H:%M')}"
+    ]
     pdf_bytes = summary_text_to_pdf_bytes(title, subtitle, summary_text)
 
     filename_utf8 = f"{title} {row.id}.pdf"

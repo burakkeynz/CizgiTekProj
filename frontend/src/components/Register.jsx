@@ -4,6 +4,7 @@ import { useTheme } from "./ThemeContext";
 import { useLanguage } from "./LanguageContext";
 import PasswordStrengthMeter from "./PasswordStrengthMeter";
 import api from "../api";
+import { toast } from "react-toastify";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -88,12 +89,18 @@ export default function Register() {
     try {
       setSubmitting(true);
       await api.post("/auth/register", form);
+      toast.success(
+        t(
+          "Account created. You can log in now.",
+          "Hesap oluşturuldu. Giriş yapabilirsiniz."
+        )
+      );
       navigate("/login");
     } catch (err) {
       const msg =
         err?.response?.data?.detail ||
         t("Registration failed!", "Kayıt başarısız!");
-      alert(msg);
+      toast.error(String(msg));
     } finally {
       setSubmitting(false);
     }
