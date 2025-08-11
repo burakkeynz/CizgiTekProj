@@ -27,6 +27,10 @@ import { receiveCall } from "./store/callSlice";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
+// EKLENDİ:
+import SessionDetail from "./components/SessionDetail";
+import SessionSummary from "./components/SessionSummary";
+
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -72,12 +76,10 @@ function App() {
     };
   }, [user, socket]);
 
-  // Sync user from useAuthCheck
   useEffect(() => {
     setUser(userFromAuth);
   }, [userFromAuth]);
 
-  // Load conversations when session is active
   useEffect(() => {
     if (hasSession) {
       api
@@ -87,7 +89,6 @@ function App() {
     }
   }, [hasSession]);
 
-  // Socket connection & status update logic
   useEffect(() => {
     if (hasSession !== true || !user || !user.id) {
       if (socket) {
@@ -270,7 +271,10 @@ function App() {
           <Route path="/" element={<Main />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/patients" element={<Patients />} />
-          <Route path="/sessions" element={<Sessions />} />
+          <Route path="/sessions" element={<Sessions currentUser={user} />} />
+          <Route path="/sessions/:id" element={<SessionDetail />} />
+          <Route path="/sessions/:id/summary" element={<SessionSummary />} />
+
           <Route
             path="/chat"
             element={

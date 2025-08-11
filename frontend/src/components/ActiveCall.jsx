@@ -12,6 +12,7 @@ import { useLanguage } from "./LanguageContext";
 import { useNavigate } from "react-router-dom";
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiX } from "react-icons/fi";
 import api from "../api";
+
 const publicUser = (u = {}) => {
   const emailLocal = typeof u.email === "string" ? u.email.split("@")[0] : null;
   return {
@@ -68,7 +69,6 @@ function AvatarBubble({ user, size = 116 }) {
   const letter = name?.[0]?.toUpperCase() || "?";
   const url = user?.profile_picture_url;
 
-  // SABIT (dark) tema renkleri
   const ring = "#2f3a55";
   const bg = "#0f1625";
   const letterColor = "#cfe0ff";
@@ -172,6 +172,21 @@ export default function ActiveCall({
   const [camOn, setCamOn] = useState(callType === "video");
   const [peerConnected, setPeerConnected] = useState(false);
 
+  // ---- PCM Worklet refs ----
+  const audioCtxRef = useRef(null);
+  const workletNodeRef = useRef(null);
+  const workletSrcRef = useRef(null);
+  const pcmSinkRef = useRef(null);
+  const pcmStartedRef = useRef(false);
+
+  const dbg = useRef({
+    tOfferSent: 0,
+    tAnswerRecv: 0,
+    tRemoteTrack: 0,
+    pcmFrames: 0,
+    partials: 0,
+  });
+
   useEffect(() => {
     setUser?.((prev) => ({ ...prev, status: "in_call" }));
     socket.emit("user_status", { user_id: currentUser.id, status: "in_call" });
@@ -183,9 +198,102 @@ export default function ActiveCall({
     };
   }, []);
 
+  async function startPCMStreaming(stream) {
+    if (pcmStartedRef.current) {
+      console.log("[PCM] already started — guard hit");
+      return;
+    }
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 48000,
+      });
+      await ctx.resume();
+      audioCtxRef.current = ctx;
+
+      await ctx.audioWorklet.addModule("/pcm-worklet.js");
+
+      const node = new AudioWorkletNode(ctx, "pcm-writer", {
+        processorOptions: { targetSampleRate: 16000, frameMs: 20 },
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+      });
+      workletNodeRef.current = node;
+
+      node.port.onmessage = (e) => {
+        const ab = e?.data?.pcm; // ArrayBuffer (Int16LE, 20ms@16k)
+        if (ab) {
+          socket.emit("pcm_chunk", { pcm: ab });
+          dbg.current.pcmFrames++;
+          if (dbg.current.pcmFrames % 50 === 0) {
+            console.log(
+              `[PCM] frames=${dbg.current.pcmFrames} (20ms@16k) ~ ${
+                (dbg.current.pcmFrames * 20) / 1000
+              }s`
+            );
+          }
+        }
+      };
+
+      const src = ctx.createMediaStreamSource(stream);
+      src.connect(node);
+      workletSrcRef.current = src;
+
+      const sink = ctx.createGain();
+      sink.gain.value = 0;
+      node.connect(sink);
+      sink.connect(ctx.destination);
+      pcmSinkRef.current = sink;
+
+      socket.emit("pcm_begin", {
+        user_id: currentUser.id,
+        peer_user_id: peerUser?.id,
+        session_time_stamp: new Date().toISOString(),
+      });
+
+      pcmStartedRef.current = true;
+      console.log("[PCM] started");
+    } catch (err) {
+      console.warn("[PCM] start error:", err);
+    }
+  }
+
+  function stopPCMStreaming() {
+    try {
+      socket.emit("pcm_end");
+    } catch {}
+    try {
+      workletSrcRef.current && workletSrcRef.current.disconnect();
+    } catch {}
+    workletSrcRef.current = null;
+
+    try {
+      workletNodeRef.current && workletNodeRef.current.disconnect();
+    } catch {}
+    try {
+      workletNodeRef.current && workletNodeRef.current.port.close?.();
+    } catch {}
+    workletNodeRef.current = null;
+
+    try {
+      pcmSinkRef.current && pcmSinkRef.current.disconnect();
+    } catch {}
+    pcmSinkRef.current = null;
+
+    try {
+      audioCtxRef.current && audioCtxRef.current.close();
+    } catch {}
+    audioCtxRef.current = null;
+
+    pcmStartedRef.current = false;
+    console.log("[PCM] stopped");
+  }
+
   function cleanupMedia() {
     if (cleanupCalledRef.current) return;
     cleanupCalledRef.current = true;
+
+    stopPCMStreaming();
+
     if (peerConnectionRef.current) {
       try {
         peerConnectionRef.current.ontrack = null;
@@ -197,6 +305,7 @@ export default function ActiveCall({
     cleanupAll(localVideoRef, remoteVideoRef, localStreamRef, remoteAudioRef);
   }
 
+  // karşı taraf kapattığında
   useEffect(() => {
     const handleCallEnd = () => {
       cleanupMedia();
@@ -213,6 +322,23 @@ export default function ActiveCall({
     return () => socket.off("webrtc_call_end", handleCallEnd);
   }, [socket, dispatch, chat_id, navigate, setUser, currentUser.id]);
 
+  useEffect(() => {
+    const onPartial = (p) => {
+      dbg.current.partials++;
+      console.log(
+        `[TRANSCRIPT] #${dbg.current.partials} final=${!!p.is_final}:`,
+        p.text
+      );
+    };
+    const onError = (e) => console.warn("[TRANSCRIBE_ERROR]", e);
+    socket.on("partial_transcript", onPartial);
+    socket.on("transcribe_error", onError);
+    return () => {
+      socket.off("partial_transcript", onPartial);
+      socket.off("transcribe_error", onError);
+    };
+  }, [socket]);
+
   // WebRTC setup
   useEffect(() => {
     let ignore = false;
@@ -227,6 +353,9 @@ export default function ActiveCall({
         if (ignore) return;
 
         localStreamRef.current = localStream;
+
+        // (PCM) — getUserMedia alındıktan hemen sonra başlat
+        await startPCMStreaming(localStreamRef.current);
 
         if (callType === "video" && localVideoRef.current) {
           bindStreamToVideo(localVideoRef.current, localStream);
@@ -244,6 +373,14 @@ export default function ActiveCall({
           onTrack: (remoteStream) => {
             remoteStreamRef.current = remoteStream;
             setPeerConnected(true);
+            dbg.current.tRemoteTrack = performance.now();
+            console.log(
+              "[RTC] remote track received. Δ from offer=",
+              (dbg.current.tRemoteTrack - dbg.current.tOfferSent).toFixed(0),
+              "ms; from answer=",
+              (dbg.current.tRemoteTrack - dbg.current.tAnswerRecv).toFixed(0),
+              "ms"
+            );
             setTimeout(() => {
               if (callType === "video" && remoteVideoRef.current) {
                 bindStreamToVideo(remoteVideoRef.current, remoteStream);
@@ -261,6 +398,7 @@ export default function ActiveCall({
         const handleOffer = async (data) => {
           if (!pc) return;
           try {
+            console.log("[RTC] handleOffer");
             await pc.setRemoteDescription({ type: "offer", sdp: data.sdp });
             addLocalTracks(pc, localStreamRef.current);
             const answer = await pc.createAnswer();
@@ -281,6 +419,7 @@ export default function ActiveCall({
           addLocalTracks(pc, localStream);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
+          dbg.current.tOfferSent = performance.now();
 
           socket.emit("webrtc_offer", {
             from_user_id: currentUser.id,
@@ -291,6 +430,7 @@ export default function ActiveCall({
             call_type: callType,
             chat_id,
           });
+          console.log("[RTC] offer sent");
         } else if (incoming && incoming.sdp) {
           await handleOffer(incoming);
         }
@@ -302,6 +442,12 @@ export default function ActiveCall({
           if (!pc || pc.signalingState !== "have-local-offer") return;
           try {
             await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+            dbg.current.tAnswerRecv = performance.now();
+            console.log(
+              "[RTC] answer received. Δ from offer=",
+              (dbg.current.tAnswerRecv - dbg.current.tOfferSent).toFixed(0),
+              "ms"
+            );
             for (const c of remoteCandidatesBuffer.current) {
               try {
                 await pc.addIceCandidate(c);
@@ -329,7 +475,8 @@ export default function ActiveCall({
           socket.off("webrtc_answer");
           socket.off("webrtc_ice_candidate");
         };
-      } catch {
+      } catch (e) {
+        console.error(e);
         cleanupMedia();
         dispatch(endCall());
         if (chat_id) {
@@ -356,6 +503,7 @@ export default function ActiveCall({
     navigate,
   ]);
 
+  // UI bind tekrar (peer bağlandıysa)
   useEffect(() => {
     if (!peerConnected) return;
     if (
@@ -412,7 +560,6 @@ export default function ActiveCall({
     }
   };
 
-  // SABIT (dark) panel görseli
   const panelBg = "linear-gradient(135deg, #23273c 84%, #262d43 100%)";
   const panelBorder = "#2d3343";
 

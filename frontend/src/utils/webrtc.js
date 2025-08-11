@@ -14,6 +14,16 @@ const ICE_SERVERS = {
       username: "openrelayproject",
       credential: "openrelayproject",
     },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turns:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
 };
 
@@ -38,7 +48,7 @@ export function createPeerConnection({
 
   pc.ontrack = (event) => {
     const remoteStream = event.streams[0];
-    rememberRemoteStream(remoteStream); // <<< eklendi
+    rememberRemoteStream(remoteStream);
 
     const localStream = getLocalStream ? getLocalStream() : null;
     if (
