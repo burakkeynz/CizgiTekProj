@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useTheme } from "./ThemeContext";
 import { useLanguage } from "./LanguageContext";
+import PasswordStrengthMeter from "./PasswordStrengthMeter";
 import api from "../api";
 
 export default function Register() {
@@ -19,6 +20,9 @@ export default function Register() {
     password: "",
     role: "",
   });
+
+  const [isStrong, setIsStrong] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const pendingTheme = localStorage.getItem("pending_theme");
@@ -40,19 +44,24 @@ export default function Register() {
     boxSizing: "border-box",
   };
 
-  const buttonStyle = {
+  const buttonStyle = (disabled) => ({
     width: "100%",
     padding: "12px",
-    backgroundColor: isDark ? "#4da5ff" : "var(--accent-color)",
+    backgroundColor: disabled
+      ? "var(--input-border)"
+      : isDark
+      ? "#4da5ff"
+      : "var(--accent-color)",
     color: "#fff",
     border: "none",
     borderRadius: "6px",
     fontSize: "1rem",
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
     fontWeight: "bold",
-    transition: "background-color 0.3s",
+    transition: "background-color 0.3s, opacity .2s",
     boxSizing: "border-box",
-  };
+    opacity: submitting ? 0.9 : 1,
+  });
 
   const roleOptions = [
     { value: "Doctor", label: t("Doctor", "Doktor") },
@@ -64,15 +73,29 @@ export default function Register() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  const disabled =
+    submitting ||
+    !form.username ||
+    !form.email ||
+    !form.first_name ||
+    !form.last_name ||
+    !form.role ||
+    !form.password ||
+    !isStrong;
+
   const handleRegister = async () => {
+    if (disabled) return;
     try {
+      setSubmitting(true);
       await api.post("/auth/register", form);
       navigate("/login");
     } catch (err) {
       const msg =
-        err.response?.data?.detail ||
+        err?.response?.data?.detail ||
         t("Registration failed!", "Kayıt başarısız!");
       alert(msg);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -204,7 +227,19 @@ export default function Register() {
           value={form.password}
           onChange={handleChange}
           style={inputStyle}
+          autoComplete="new-password"
         />
+
+        {/* Şifre gücü (boşken gizli, yazınca görünür) */}
+        <PasswordStrengthMeter
+          value={form.password}
+          minimum={2} // en az "Orta"
+          onValidChange={setIsStrong}
+          compact={false}
+          showWhenEmpty={false}
+          style={{ marginTop: 6, marginBottom: 10 }}
+        />
+
         <select
           name="role"
           value={form.role}
@@ -225,15 +260,22 @@ export default function Register() {
         {/* Submit */}
         <button
           onClick={handleRegister}
-          style={buttonStyle}
-          onMouseOver={(e) =>
-            (e.target.style.backgroundColor = "var(--accent-hover)")
-          }
-          onMouseOut={(e) =>
-            (e.target.style.backgroundColor = "var(--accent-color)")
-          }
+          disabled={disabled}
+          style={buttonStyle(disabled)}
+          onMouseOver={(e) => {
+            if (!disabled)
+              e.currentTarget.style.backgroundColor = "var(--accent-hover)";
+          }}
+          onMouseOut={(e) => {
+            if (!disabled)
+              e.currentTarget.style.backgroundColor = isDark
+                ? "#4da5ff"
+                : "var(--accent-color)";
+          }}
         >
-          {t("Register", "Kayıt Ol")}
+          {submitting
+            ? t("Creating...", "Oluşturuluyor...")
+            : t("Register", "Kayıt Ol")}
         </button>
 
         <p

@@ -18,11 +18,82 @@ from backend.routers.auth import get_current_user_from_cookie
 from backend.routers.prompts import *
 import webrtcvad
 
-#MIME düzeltmeleri
+import pandas as pd  # pip install pandas openpyxl eğer yoksa, yaptım ben 
+
+MAX_ROWS_PER_SHEET = int(os.getenv("CSV_MAX_ROWS_PER_SHEET", "2000"))
+MAX_CSV_BYTES      = int(os.getenv("CSV_MAX_BYTES", "400000"))  # ~400 KB
+CSV_PREVIEW_ROWS   = int(os.getenv("CSV_PREVIEW_ROWS", "50"))
+
+EXCEL_EXTS = (".xlsx", ".xls")
+CSV_EXTS   = (".csv",)
+
+def is_excel_filename(fn: str) -> bool:
+    fn = (fn or "").lower()
+    return fn.endswith(EXCEL_EXTS)
+
+def is_csv_filename(fn: str) -> bool:
+    fn = (fn or "").lower()
+    return fn.endswith(CSV_EXTS)
+
+def excel_bytes_to_csv_text(raw: bytes) -> str:
+    """
+    Excel'i (çok sayfalı olabilir) CSV metnine çevirir.
+    Büyük dosyalar için satır kısma ve toplam byte limiti uygular;
+    hala çok büyükse özet moda düşer (kolonlar+dtypes+ilk N satır).
+    """
+    buf = io.BytesIO(raw)
+    try:
+        xls = pd.ExcelFile(buf)  # requires openpyxl for .xlsx
+    except Exception as e:
+        # CSV gelmiş olabilir: fallback utf-8 decode
+        try:
+            return raw.decode("utf-8", errors="replace")
+        except Exception:
+            raise e
+
+    pieces = []
+    for name in xls.sheet_names:
+        df = xls.parse(name)
+        if len(df) > MAX_ROWS_PER_SHEET:
+            df_lim = df.head(MAX_ROWS_PER_SHEET)
+            note = f"# Sheet: {name} (truncated to first {MAX_ROWS_PER_SHEET} rows of {len(df)})\n"
+        else:
+            df_lim = df
+            note = f"# Sheet: {name}\n"
+        pieces.append(note + df_lim.to_csv(index=False))
+
+    csv_all = "\n\n".join(pieces)
+
+    # Byte limiti: hala çok büyükse özet moduna geç
+    if len(csv_all.encode("utf-8")) > MAX_CSV_BYTES:
+        summary_parts = []
+        for name in xls.sheet_names:
+            df = xls.parse(name)
+            dtypes = {k: str(v) for k, v in df.dtypes.to_dict().items()}
+            cols = list(df.columns)
+            preview = df.head(CSV_PREVIEW_ROWS).to_csv(index=False)
+            summary_parts.append(
+                f"# Sheet: {name}\n"
+                f"Columns ({len(cols)}): {cols}\n"
+                f"Dtypes: {dtypes}\n"
+                f"Preview (first {CSV_PREVIEW_ROWS} rows):\n{preview}"
+            )
+        csv_all = (
+            "Dataset is large, sending a compact summary instead.\n"
+            "If you need specific filters or columns, ask and I will provide a focused slice.\n\n"
+            + "\n\n".join(summary_parts)
+        )
+    return csv_all
+
+
 mimetypes.add_type("audio/mp4", ".m4a")
 mimetypes.add_type("image/jpeg", ".jpg")
 mimetypes.add_type("image/jpeg", ".jpeg")
 mimetypes.add_type("image/png", ".png")
+
+mimetypes.add_type("text/csv", ".csv")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")
+mimetypes.add_type("application/vnd.ms-excel", ".xls")
 
 router = APIRouter(prefix="/gemini", tags=["gemini"])
 
@@ -33,6 +104,7 @@ MODEL = "gemini-2.5-flash"
 RATE_LIMIT_RPM = int(os.getenv("GEMINI_RPM", "8"))
 _MIN_INTERVAL = 60.0 / max(1, RATE_LIMIT_RPM)
 _last_call_ts = 0.0
+
 def _rl_gate():
     global _last_call_ts
     now = time.time()
@@ -41,8 +113,10 @@ def _rl_gate():
         time.sleep(wait)
     _last_call_ts = time.time()
 
-def _stream_with_backoff(make_stream_fn, max_attempts=4, base_sleep=2.0):
+
+def _stream_with_backoff(make_stream_fn, max_attempts=10, base_sleep=4.0):
     attempt = 0
+    last_err = None
     while attempt < max_attempts:
         attempt += 1
         try:
@@ -54,20 +128,24 @@ def _stream_with_backoff(make_stream_fn, max_attempts=4, base_sleep=2.0):
             return
         except Exception as e:
             msg = str(e)
+            last_err = msg
+            print(f"[GenAI retry {attempt}/{max_attempts}] error: {msg}")
             transient = (
                 "RESOURCE_EXHAUSTED", "429",
                 "ACTIVE", "FAILED_PRECONDITION",
-                "INTERNAL", "temporarily unavailable"
+                "INTERNAL", "temporarily unavailable",
+                "deadline", "timeout", "504", "gateway", "unavailable"
             )
             if any(t.lower() in msg.lower() for t in transient):
-                time.sleep(min(base_sleep * (2 ** (attempt - 1)), 20.0))
+                time.sleep(min(base_sleep * (2 ** (attempt - 1)), 25.0))
                 continue
+            # non-transient
             yield f"\n[ERROR]: {msg}"
             return
-    yield "\n[ERROR]: Backoff attempts exhausted.\n"
+    yield f"\n[ERROR]: Backoff attempts exhausted. Last error: {last_err}\n"
 
 
-# yardımcı fonksiyonklar
+# yardımcı fonksiyonlar
 def s3_key_from_url(url: str) -> str:
     return url.split(".amazonaws.com/", 1)[1]
 
@@ -87,6 +165,9 @@ def normalize_mime(filename: str, guessed: Optional[str]) -> str:
         elif fn.endswith(".pdf"):  mime = "application/pdf"
         elif fn.endswith(".png"):  mime = "image/png"
         elif fn.endswith(".jpg") or fn.endswith(".jpeg"): mime = "image/jpeg"
+        elif fn.endswith(".csv"):  mime = "text/csv"
+        elif fn.endswith(".xlsx"): mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif fn.endswith(".xls"):  mime = "application/vnd.ms-excel"
     return mime
 
 def upload_and_wait_active(file_bytes: bytes, mime: str, timeout_s: float = 45.0, poll_sleep: float = 0.8):
@@ -102,9 +183,9 @@ def upload_and_wait_active(file_bytes: bytes, mime: str, timeout_s: float = 45.0
         except Exception:
             pass
         time.sleep(poll_sleep)
-    return up 
+    return up
 
-def _ensure_all_active(file_objs, timeout_s: float = 30.0, poll_sleep: float = 0.8):
+def _ensure_all_active(file_objs, timeout_s: float = 120.0, poll_sleep: float = 1.2):
     names = [getattr(u, "name", None) for u in file_objs]
     names = [n for n in names if n]
     if not names:
@@ -130,6 +211,66 @@ def _file_part_from_bytes(raw: bytes, mime: str):
     up = upload_and_wait_active(raw, mime)
     return up, types.Part(file_data=types.FileData(file_uri=up.uri, mime_type=mime))
 
+# NEW: Excel/CSV yakala -> text part; diğerleri file_data
+def _append_blob_as_part_or_excel_text(
+    built_contents: List[types.Content],
+    uploaded_for_cleanup: list,
+    filename: str,
+    raw: bytes
+):
+    """
+    Excel/CSV -> Part(text=CSV or summary)
+    Diğer dosyalar -> File Store + Part(file_data)
+    """
+    fn = (filename or "").lower()
+
+    if is_excel_filename(fn):
+        csv_text = excel_bytes_to_csv_text(raw)
+        csv_block = (
+            f"Below is spreadsheet data converted to CSV from file '{filename}'. "
+            f"It may be truncated/ summarized to fit the context.\n\n{csv_text}"
+        )
+        built_contents.append(
+            types.Content(role="user", parts=[types.Part(text=csv_block)])
+        )
+        return
+
+    if is_csv_filename(fn):
+        try:
+            csv_text = raw.decode("utf-8", errors="replace")
+        except Exception:
+            csv_text = str(raw)
+        if len(csv_text.encode("utf-8")) > MAX_CSV_BYTES:
+            import csv as _csv
+            from io import StringIO as _SIO
+            sio = _SIO(csv_text)
+            rows, header = [], None
+            reader = _csv.reader(sio)
+            for i, row in enumerate(reader):
+                if i == 0:
+                    header = row
+                if i <= CSV_PREVIEW_ROWS:
+                    rows.append(row)
+                else:
+                    break
+            csv_text = (
+                "CSV is large, sending header and a small preview.\n"
+                f"Header: {header}\n"
+                f"Preview (first {CSV_PREVIEW_ROWS} rows):\n" +
+                "\n".join([",".join(r) for r in rows])
+            )
+        csv_block = f"Below is CSV data from file '{filename}':\n\n{csv_text}"
+        built_contents.append(
+            types.Content(role="user", parts=[types.Part(text=csv_block)])
+        )
+        return
+
+    # not excel/csv: normal dosya yükle
+    mime = normalize_mime(fn, mimetypes.guess_type(fn)[0])
+    up, part = _file_part_from_bytes(raw, mime)
+    uploaded_for_cleanup.append(up)
+    built_contents.append(types.Content(role="user", parts=[part]))
+
 
 @router.post("/chat/stream")
 async def gemini_chat_stream(
@@ -140,10 +281,9 @@ async def gemini_chat_stream(
     upload_files: Optional[List[UploadFile]] = File(None),
 ):
     """
-    Eski çalışan yapı:
-      - Tüm resim/dosya içerikleri **önce File Store'a** yüklenir
-      - `types.FileData(file_uri=..., mime_type=...)` olarak gönderilir
-      - Stream yanıtı bozulmaz
+    Eski çalışan yapı + Excel/CSV dönüşümü:
+      - PDF/PNG/JPG/WAV vb. -> File Store + Part(file_data)
+      - Excel/CSV -> **CSV metni veya özet** olarak Part(text=...)
     """
     try:
         built_contents: List[types.Content] = []
@@ -152,6 +292,8 @@ async def gemini_chat_stream(
             built_contents.append(types.Content(role=role, parts=[types.Part(text=text or "")]))
 
         uploaded_for_cleanup = []
+
+        # --- History (contents) ---
         if contents:
             try:
                 parsed = json.loads(contents)
@@ -162,21 +304,19 @@ async def gemini_chat_stream(
                         add_text("user", text)
                     elif role == "model":
                         add_text("model", text)
-                        
+
                     if entry.get("files"):
                         for url in entry["files"]:
                             s3u = url["url"] if isinstance(url, dict) else url
                             s3_key = s3_key_from_url(s3u)
                             data = read_file_from_s3(s3_key)
                             filename = os.path.basename(s3_key)
-                            mime = normalize_mime(filename, mimetypes.guess_type(filename)[0])
-                            up, part = _file_part_from_bytes(data, mime)
-                            uploaded_for_cleanup.append(up)
-                            built_contents.append(types.Content(role="user", parts=[part]))
+                            _append_blob_as_part_or_excel_text(
+                                built_contents, uploaded_for_cleanup, filename, data
+                            )
             except Exception as e:
                 print("[WARN] History parse hatası:", e)
         else:
-
             if (message or "").strip():
                 add_text("user", message)
 
@@ -187,19 +327,18 @@ async def gemini_chat_stream(
                 s3_key = s3_key_from_url(url)
                 data = read_file_from_s3(s3_key)
                 filename = os.path.basename(s3_key)
-                mime = normalize_mime(filename, mimetypes.guess_type(filename)[0])
-                up, part = _file_part_from_bytes(data, mime)
-                uploaded_for_cleanup.append(up)
-                built_contents.append(types.Content(role="user", parts=[part]))
+                _append_blob_as_part_or_excel_text(
+                    built_contents, uploaded_for_cleanup, filename, data
+                )
 
+        # --- upload_files (multipart dosya) ---
         if upload_files:
             for uf in upload_files:
                 raw = await uf.read()
                 filename = (uf.filename or "").lower()
-                mime = normalize_mime(filename, uf.content_type or mimetypes.guess_type(filename)[0])
-                up, part = _file_part_from_bytes(raw, mime)
-                uploaded_for_cleanup.append(up)
-                built_contents.append(types.Content(role="user", parts=[part]))
+                _append_blob_as_part_or_excel_text(
+                    built_contents, uploaded_for_cleanup, filename, raw
+                )
 
         config = None
         if web_search:
@@ -218,7 +357,7 @@ async def gemini_chat_stream(
                     return client.models.generate_content_stream(
                         model=MODEL, contents=built_contents
                     )
-                for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
+                for piece in _stream_with_backoff(_mk, max_attempts=10, base_sleep=4.0):
                     if piece:
                         yield piece
             finally:
@@ -246,7 +385,7 @@ async def gemini_audio_transcribe(
         raise HTTPException(401, "Authentication failed")
 
     try:
-        uploaded_objs = []  
+        uploaded_objs = []
         for url in files:
             s3_key = s3_key_from_url(url)
             data = read_file_from_s3(s3_key)
@@ -268,7 +407,7 @@ async def gemini_audio_transcribe(
                 def _mk():
                     return client.models.generate_content_stream(model=MODEL, contents=contents)
 
-                for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
+                for piece in _stream_with_backoff(_mk, max_attempts=10, base_sleep=4.0):
                     if piece.strip().startswith("[ERROR"):
                         yield piece
                     else:
@@ -303,6 +442,7 @@ def pcm16_from_wav(wav_bytes: bytes):
         raw = audioop.tomono(raw, 2, 0.5, 0.5)
     return raw, framerate
 
+
 def wav_from_pcm16(pcm_bytes: bytes, sr: int = 16000) -> bytes:
     out = io.BytesIO()
     with wave.open(out, 'wb') as wf:
@@ -312,12 +452,14 @@ def wav_from_pcm16(pcm_bytes: bytes, sr: int = 16000) -> bytes:
         wf.writeframes(pcm_bytes)
     return out.getvalue()
 
+
 class _Frame:
     __slots__ = ("bytes", "timestamp", "duration")
     def __init__(self, b, ts, dur):
         self.bytes = b
         self.timestamp = ts
         self.duration = dur
+
 
 def _frame_generator(frame_ms: int, audio: bytes, sample_rate: int):
     n = int(sample_rate * (frame_ms / 1000.0) * 2)
@@ -327,6 +469,7 @@ def _frame_generator(frame_ms: int, audio: bytes, sample_rate: int):
     while offset + n <= L:
         yield _Frame(audio[offset:offset + n], ts, dur)
         ts += dur; offset += n
+
 
 def vad_segments(
     pcm16: bytes,
@@ -358,6 +501,7 @@ def vad_segments(
     if len(cur) > 0 and len(cur) >= need_bytes:
         voiced.append(bytes(cur))
     return voiced
+
 
 @router.post("/audio/transcribe-direct")
 async def gemini_audio_transcribe_direct(
@@ -406,7 +550,7 @@ async def gemini_audio_transcribe_direct(
                     return client.models.generate_content_stream(model=MODEL, contents=contents)
 
                 emitted = False
-                for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
+                for piece in _stream_with_backoff(_mk, max_attempts=10, base_sleep=4.0):
                     if piece.strip().startswith("[ERROR"):
                         yield piece
                     else:
