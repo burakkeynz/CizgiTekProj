@@ -104,7 +104,8 @@ class Patients(Base):
     
     def __repr__(self):
         return f"<Patient {self.first_name} {self.last_name}>"
-    
+
+#11 Ağustos tarihi ek column ekliyorum
 class SessionLog(Base):
     __tablename__ = "session_logs"
 
@@ -121,6 +122,7 @@ class SessionLog(Base):
     updated_at = Column(DateTime(timezone=True), default=now_tr, onupdate=now_tr, nullable=False)
     user1 = relationship("Users", foreign_keys=[user1_id])
     user2 = relationship("Users", foreign_keys=[user2_id])
+    summary = Column(Text, nullable=True)
 
 # Listeleme sorgularını hızlandırmak için composite index
 Index(

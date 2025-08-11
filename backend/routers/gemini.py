@@ -15,6 +15,7 @@ from google.genai import types
 
 from backend.utils.aws_s3 import read_file_from_s3
 from backend.routers.auth import get_current_user_from_cookie
+from backend.routers.prompts import *
 import webrtcvad
 
 
@@ -28,6 +29,7 @@ RATE_LIMIT_RPM = int(os.getenv("GEMINI_RPM", "8"))
 _MIN_INTERVAL = 60.0 / max(1, RATE_LIMIT_RPM)
 _last_call_ts = 0.0
 
+
 def _rl_gate():
     """Dakikalık oran sınırlayıcı (senkron)."""
     global _last_call_ts
@@ -36,6 +38,7 @@ def _rl_gate():
     if wait > 0:
         time.sleep(wait)
     _last_call_ts = time.time()
+
 
 def _stream_with_backoff(make_stream_fn, max_attempts=4, base_sleep=2.0):
     """generate_content_stream için basit exponential backoff (429/ACTIVE gecikmesi vs)."""
@@ -69,18 +72,17 @@ def s3_key_from_url(url: str) -> str:
     """S3 signed/https URL’den key’i çıkar."""
     return url.split(".amazonaws.com/", 1)[1]
 
+
 def normalize_mime(filename: str, guessed: Optional[str]) -> str:
     """Dosya adına ve guess’e göre MIME normalize eder (özellikle ses)."""
     fn = (filename or "").lower()
     mime = (guessed or "application/octet-stream")
-
 
     if fn.endswith(".webm") and mime == "video/webm":
         mime = "audio/webm"
 
     if fn.endswith(".m4a") and mime in (None, "application/octet-stream", "audio/mpeg"):
         mime = "audio/mp4"
-
 
     if mime == "application/octet-stream":
         if fn.endswith(".mp3"):
@@ -102,6 +104,7 @@ def normalize_mime(filename: str, guessed: Optional[str]) -> str:
 
     return mime
 
+
 def upload_and_wait_active(file_bytes: bytes, mime: str, timeout_s: float = 45.0, poll_sleep: float = 0.8):
     """
     Gemini File Store'a yükle; ACTIVE olana kadar bekle.
@@ -120,6 +123,7 @@ def upload_and_wait_active(file_bytes: bytes, mime: str, timeout_s: float = 45.0
         time.sleep(poll_sleep)
 
     return up
+
 
 def _ensure_all_active(uploaded_list, timeout_s: float = 30.0, poll_sleep: float = 0.8):
     """generate_content çağrısından hemen önce tüm FileData’ların ACTIVE olduğundan emin ol."""
@@ -146,13 +150,14 @@ def _ensure_all_active(uploaded_list, timeout_s: float = 30.0, poll_sleep: float
 @router.post("/chat/stream")
 async def gemini_chat_stream(
     message: str = Form(...),
-    files: Optional[List[str]] = Form(None),                 
+    files: Optional[List[str]] = Form(None),
     web_search: bool = Form(False),
-    contents: str = Form(None),                             
-    upload_files: Optional[List[UploadFile]] = File(None),   
+    contents: str = Form(None),
+    upload_files: Optional[List[UploadFile]] = File(None),
 ):
     try:
         inline_contents: List[types.Content] = []
+
         def add_text(role: str, text: str):
             inline_contents.append(types.Content(role=role, parts=[types.Part(text=text or "")]))
 
@@ -160,12 +165,10 @@ async def gemini_chat_stream(
             part = types.Part.from_bytes(data=raw, mime_type=mime)
             inline_contents.append(types.Content(role="user", parts=[part]))
 
- 
         if contents:
             try:
                 parsed = json.loads(contents)
                 for entry in parsed:
-
                     if entry.get("files"):
                         for url in entry["files"]:
                             s3u = url["url"] if isinstance(url, dict) else url
@@ -186,7 +189,6 @@ async def gemini_chat_stream(
             if message.strip():
                 add_text("user", message)
 
-
         if files:
             if isinstance(files, str):
                 files = [files]
@@ -197,7 +199,6 @@ async def gemini_chat_stream(
                 mime, _ = mimetypes.guess_type(filename)
                 mime = normalize_mime(filename, mime)
                 add_bytes_part(data, mime)
-
 
         if upload_files:
             for uf in upload_files:
@@ -212,7 +213,7 @@ async def gemini_chat_stream(
         if web_search:
             config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
 
-        uploaded_to_delete = [] 
+        uploaded_to_delete = []
 
         def gen_with_inline():
             _rl_gate()
@@ -231,10 +232,8 @@ async def gemini_chat_stream(
                 for c in inline_contents:
                     new_parts = []
                     for p in c.parts:
-                        # text ise doğrudan kopyala
                         if getattr(p, "text", None) is not None:
                             new_parts.append(types.Part(text=p.text))
-                        # bytes part ise File Store’a yükle
                         elif getattr(p, "inline_data", None) is not None or hasattr(p, "data"):
                             inline = getattr(p, "inline_data", None)
                             if not inline:
@@ -249,7 +248,6 @@ async def gemini_chat_stream(
                             new_parts.append(p)
                     rebuilt.append(types.Content(role=c.role, parts=new_parts))
 
-                # generate öncesi ACTIVE teyit
                 _ensure_all_active(uploaded_to_delete)
 
                 if config:
@@ -268,7 +266,6 @@ async def gemini_chat_stream(
                         pass
 
         def streaming_gen():
-            # Önce inline dene
             try:
                 yield from gen_with_inline()
                 return
@@ -297,8 +294,8 @@ async def gemini_chat_stream(
 @router.post("/audio/transcribe")
 async def gemini_audio_transcribe(
     files: List[str] = Form(...),
-    prompt: str = Form("Generate a transcript of the speech."),
-    me: dict = Depends(get_current_user_from_cookie),  # AUTH
+    prompt: Optional[str] = Form(None),
+    me: dict = Depends(get_current_user_from_cookie), 
 ):
     if not me or not me.get("id"):
         raise HTTPException(401, "Authentication failed")
@@ -314,6 +311,9 @@ async def gemini_audio_transcribe(
             active_file = upload_and_wait_active(data, mime)
             uploaded_parts.append(active_file)
 
+        # Prompt: form’dan gelirse onu kullan, yoksa merkezi transcribe prompt (TR)
+        p = prompt.strip() if (prompt and prompt.strip()) else transcribe_prompt("tr")
+
         def streaming_gen():
             try:
                 _ensure_all_active(uploaded_parts)
@@ -321,9 +321,17 @@ async def gemini_audio_transcribe(
                 def _mk():
                     return client.models.generate_content_stream(
                         model=MODEL,
-                        contents=[prompt, *uploaded_parts]
+                        contents=[p, *uploaded_parts]
                     )
-                yield from _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0)
+
+                for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
+                    # Hata satırlarını olduğu gibi ilet, diğerlerini temizle
+                    if piece.strip().startswith("[ERROR"):
+                        yield piece
+                    else:
+                        cleaned = postprocess_transcript(piece)
+                        if cleaned:
+                            yield cleaned
             finally:
                 for f in uploaded_parts:
                     try:
@@ -341,7 +349,7 @@ async def gemini_audio_transcribe(
 
 def pcm16_from_wav(wav_bytes: bytes):
     """
-    WAV -> (pcm_int16_bytes, sample_rate). Giriş stereo/16-bit değilse normalize eder.
+    WAV -> (pcm_int16_bytes, sample_rate), eğer giriş stereo/16-bit değilse normalize 
     """
     buf = io.BytesIO(wav_bytes)
     with wave.open(buf, 'rb') as wf:
@@ -351,15 +359,16 @@ def pcm16_from_wav(wav_bytes: bytes):
         n_frames = wf.getnframes()
         raw = wf.readframes(n_frames)
 
-    # 16-bit'e çevir
+    # 16 bite çeviriyorum
     if sampwidth != 2:
         raw = audioop.lin2lin(raw, sampwidth, 2)
 
-    # Monoya indir
+    # monoya indiriyorum
     if n_channels == 2:
         raw = audioop.tomono(raw, 2, 0.5, 0.5)
 
     return raw, framerate
+
 
 def wav_from_pcm16(pcm_bytes: bytes, sr: int = 16000) -> bytes:
     """Int16 mono PCM -> WAV bytes."""
@@ -371,15 +380,18 @@ def wav_from_pcm16(pcm_bytes: bytes, sr: int = 16000) -> bytes:
         wf.writeframes(pcm_bytes)
     return out.getvalue()
 
+
 class _Frame:
     __slots__ = ("bytes", "timestamp", "duration")
+
     def __init__(self, b, ts, dur):
         self.bytes = b
         self.timestamp = ts
         self.duration = dur
 
+
 def _frame_generator(frame_ms: int, audio: bytes, sample_rate: int):
-    n = int(sample_rate * (frame_ms / 1000.0) * 2)  # 2 byte/sample
+    n = int(sample_rate * (frame_ms / 1000.0) * 2)  # 2 byte sample
     offset = 0
     ts = 0.0
     dur = (float(n) / (2 * sample_rate))
@@ -388,6 +400,7 @@ def _frame_generator(frame_ms: int, audio: bytes, sample_rate: int):
         yield _Frame(audio[offset:offset + n], ts, dur)
         ts += dur
         offset += n
+
 
 def vad_segments(
     pcm16: bytes,
@@ -398,7 +411,7 @@ def vad_segments(
     min_segment_ms: int = 1200
 ):
     """
-    PCM16’ı konuşma segmentlerine ayırır, Int16 bytes listesi döner.
+    PCM16yı konuşma segmentlerine ayırır ve Int16 bytes listesi döner
     """
     vad = webrtcvad.Vad(aggressiveness)
     frames = list(_frame_generator(frame_ms, pcm16, sample_rate))
@@ -431,10 +444,11 @@ def vad_segments(
 
     return voiced
 
+
 @router.post("/audio/transcribe-direct")
 async def gemini_audio_transcribe_direct(
     file: UploadFile = File(...),
-    prompt: str = Form("Transcribe the Turkish (and English if any) speech as plain text."),
+    prompt: Optional[str] = Form(None),
     me: dict = Depends(get_current_user_from_cookie),
 ):
     if not me or not me.get("id"):
@@ -443,7 +457,6 @@ async def gemini_audio_transcribe_direct(
     raw = await file.read()
     filename = (file.filename or "").lower()
     ctype = (file.content_type or "").lower()
-
 
     if ("wav" not in filename) and (not ctype.startswith("audio/wav")):
         raise HTTPException(400, "Please send WAV (mono/16-bit).")
@@ -454,32 +467,45 @@ async def gemini_audio_transcribe_direct(
     except Exception as e:
         raise HTTPException(400, f"WAV parse error: {e}")
 
-
     if in_sr != 16000:
         pcm16 = audioop.ratecv(pcm16, 2, 1, in_sr, 16000, None)[0]
         in_sr = 16000
 
- 
-    segments = vad_segments(pcm16, sample_rate=in_sr, frame_ms=20, aggressiveness=2,
-                            max_silence_ms=900, min_segment_ms=1200)
+    segments = vad_segments(
+        pcm16, sample_rate=in_sr, frame_ms=20, aggressiveness=2,
+        max_silence_ms=900, min_segment_ms=1200
+    )
+
+    p = prompt.strip() if (prompt and prompt.strip()) else transcribe_prompt("tr")
 
     def streaming_gen():
-        parts = segments if segments else [pcm16]  # segment çıkmazsa tümünü dene
+        parts = segments if segments else [pcm16]  
         for i, seg in enumerate(parts, start=1):
             wav_bytes = wav_from_pcm16(seg, sr=in_sr)
             active_file = None
             try:
                 active_file = upload_and_wait_active(wav_bytes, "audio/wav")
-
                 _ensure_all_active([active_file])
 
                 def _mk():
                     return client.models.generate_content_stream(
                         model=MODEL,
-                        contents=[prompt, active_file]
+                        contents=[p, active_file]
                     )
-                yield from _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0)
-                yield "\n"  # segment ayracı
+
+                emitted = False
+                for piece in _stream_with_backoff(_mk, max_attempts=4, base_sleep=2.0):
+                    if piece.strip().startswith("[ERROR"):
+                        yield piece
+                    else:
+                        cleaned = postprocess_transcript(piece)
+                        if cleaned:
+                            emitted = True
+                            yield cleaned
+
+                if emitted:
+                    yield "\n" 
+
             except Exception as e:
                 yield f"\n[ERROR segment {i}]: {e}\n"
             finally:

@@ -1,29 +1,55 @@
+// src/components/Sessions.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
-function formatDate(ts) {
+// ---- helpers ----
+const TZ = "Europe/Istanbul";
+
+function formatDate(ts, lang = "tr") {
   try {
-    return new Date(ts).toLocaleString("tr-TR");
+    return new Date(ts).toLocaleString(lang === "tr" ? "tr-TR" : "en-US", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: TZ,
+    });
   } catch {
     return ts || "";
   }
 }
 
-function getFilenameFromContentDisposition(header) {
-  if (!header) return null;
-  const mStar = header.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
-  if (mStar && mStar[1]) {
-    try {
-      return decodeURIComponent(mStar[1].replace(/(^")|("$)/g, ""));
-    } catch {
-      return mStar[1].replace(/(^")|("$)/g, "");
-    }
-  }
+// Köşeli parantezli tag'leri ve gürültü ifadelerini temizle (Türkçe harflere dokunma)
+const BRACKET_TAGS = /\[[^\]]+\]/g;
+// Eski modellerin yaygın “gürültü” kalıpları (İngilizce):
+const NOISE_PHRASES =
+  /\b(?:no speech detected|typing sounds?|high[- ]pitched(?: tone| ringing| beep)?|beep|sound of a (?:machine|device)|machine\/device operating)\b/gi;
+// Sadece gerçek doldurucular (ASCII), TR harfleri kesinlikle hedef değil:
+const FILLERS = /\b(?:uh-?huh|uh|um+|hmm+|mm+|ha+ ?ha+)\b/gi;
 
-  const m = header.match(/filename="?([^"]+)"?/i);
-  return m && m[1] ? m[1] : null;
+function cleanText(s) {
+  return (s || "")
+    .replace(BRACKET_TAGS, " ")
+    .replace(NOISE_PHRASES, " ")
+    .replace(FILLERS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function previewFromTranscript(tr, maxLen = 160) {
+  const arr = Array.isArray(tr) ? tr : [];
+  const text = arr
+    .map((x) => (typeof x === "string" ? x : x?.text ?? ""))
+    .map(cleanText)
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  return text.length > maxLen ? text.slice(0, maxLen) + "…" : text;
 }
 
 export default function Sessions({ currentUser }) {
@@ -34,84 +60,23 @@ export default function Sessions({ currentUser }) {
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
 
-  const [summaries, setSummaries] = React.useState({});
-  const [sumLoading, setSumLoading] = React.useState({});
-
-  const [expanded, setExpanded] = React.useState({});
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await api.get("/sessionlogs");
+      setItems(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      console.error(e);
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   React.useEffect(() => {
-    let ignore = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await api.get("/sessionlogs");
-        if (!ignore) setItems(res.data || []);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    })();
-    return () => {
-      ignore = true;
-    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function handleShow(id) {
-    navigate(`/sessions/${id}`);
-  }
-
-  function handleOpenSummary(id) {
-    navigate(`/sessions/${id}/summary`);
-  }
-
-  async function handleSummarizeInline(id) {
-    setSumLoading((s) => ({ ...s, [id]: true }));
-    try {
-      const res = await api.post(`/sessionlogs/${id}/summarize`, {
-        lang: language === "tr" ? "tr" : "en",
-      });
-      const summary = res.data?.summary || "";
-      setSummaries((m) => ({ ...m, [id]: summary }));
-    } catch (e) {
-      console.error(e);
-      alert(
-        t(
-          "Summary endpoint not available or failed.",
-          "Özetleme uç noktası yok ya da hata oluştu."
-        )
-      );
-    } finally {
-      setSumLoading((s) => ({ ...s, [id]: false }));
-    }
-  }
-
-  async function handleDownloadSummaryPdf(id) {
-    try {
-      const res = await api.get(`/sessionlogs/${id}/summary-pdf`, {
-        params: { lang: language === "tr" ? "tr" : "en" },
-        responseType: "blob",
-      });
-      const blob = new Blob([res.data], { type: "application/pdf" });
-
-      // Sunucunun verdiği adı kullan (UTF-8 filename* destekli)
-      const header =
-        res.headers["content-disposition"] ||
-        res.headers["Content-Disposition"];
-      const serverName = getFilenameFromContentDisposition(header);
-      const fallback = `Gorusme_Ozeti_${id}.pdf`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = serverName || fallback;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert(t("PDF download failed.", "PDF indirme başarısız."));
-    }
-  }
 
   async function handleDelete(id) {
     if (
@@ -122,256 +87,120 @@ export default function Sessions({ currentUser }) {
       return;
     try {
       await api.delete(`/sessionlogs/${id}`);
-      setItems((arr) => arr.filter((x) => String(x.id) !== String(id)));
-      // inline özet varsa temizle
-      setSummaries((m) => {
-        const n = { ...m };
-        delete n[id];
-        return n;
-      });
+      setItems((prev) => prev.filter((x) => x.id !== id));
     } catch (e) {
       console.error(e);
       alert(t("Delete failed.", "Silme başarısız."));
     }
   }
 
-  function transcriptToLines(tr) {
-    const arr = Array.isArray(tr) ? tr : [];
-    return arr
-      .map((x) => {
-        if (typeof x === "string") return x;
-        if (x && typeof x === "object") return x.text ?? JSON.stringify(x);
-        return "";
-      })
-      .filter(Boolean);
-  }
-
   return (
-    <div style={{ padding: 24 }}>
-      <style>
-        {`
-          .session-preview {
-            background: rgba(255,255,255,0.03);
-            border: 1px solid #3a425a;
-            border-radius: 10px;
-            padding: 10px;
-            white-space: pre-wrap;
-            transition: max-height .2s ease;
-            overflow: hidden;
-          }
-          .session-preview.scrollable {
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border-card) transparent;
-          }
-          .session-preview::-webkit-scrollbar {
-            width: 7px;
-            background: transparent;
-          }
-          .session-preview::-webkit-scrollbar-thumb {
-            background: var(--border-card);
-            border-radius: 10px;
-          }
-          .session-actions button { margin-left: 0 !important; }
-        `}
-      </style>
+    <>
+      <style>{`
+        .sessions-wrap { padding: 24px; background: var(--bg-main); }
+        .sessions-title { margin: 0 0 16px; color: var(--text-main); font-weight: 800; letter-spacing: .2px; }
 
-      <h2 style={{ marginBottom: 14 }}>{t("Sessions", "Görüşme Kayıtları")}</h2>
+        .session-card {
+          background: var(--card-bg);
+          border: 1px solid var(--card-border);
+          border-radius: 18px;
+          box-shadow: var(--shadow-card);
+          padding: 18px;
+          max-width: 920px;
+          transition: background .15s, box-shadow .15s, border-color .15s;
+        }
+        .session-card + .session-card { margin-top: 14px; }
+        .session-card:hover { background: var(--nav-bg-hover); border-color: var(--border-card); }
 
-      {loading ? (
-        <div style={{ color: "#889" }}>{t("Loading...", "Yükleniyor...")}</div>
-      ) : items.length === 0 ? (
-        <div style={{ color: "#889" }}>
-          {t("No sessions yet.", "Henüz kayıt yok.")}
-        </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            maxWidth: 820,
-          }}
-        >
-          {items.map((it) => {
-            const peerId =
-              String(it.user1_id) === String(currentUser?.id)
-                ? it.user2_id
-                : it.user1_id;
+        .card-head {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 10px;
+          align-items: center;
+          margin-bottom: 10px;
+        }
+        .meta-line { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .pill {
+          background: #222a3d; color: #e9efff; border: 1px solid #2e3752;
+          padding: 6px 10px; border-radius: 999px; font-weight: 700; font-size: 13px;
+          max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .when { color: var(--text-muted); font-weight: 500; }
 
-            const lines = transcriptToLines(it.transcript);
-            const joined = lines.join("\n");
-            const isExpanded = !!expanded[it.id];
+        .preview-box {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid #313a54;
+          border-radius: 12px;
+          padding: 12px;
+          color: var(--text-main);
+          white-space: pre-wrap;
+        }
+
+        .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn { border-radius: 10px; padding: 9px 14px; font-weight: 700; font-size: 14px; cursor: pointer; border: 1px solid transparent; }
+        .btn-primary { background: linear-gradient(135deg, var(--btn1,#5c93f7), var(--btn2,#4285f4)); color: #fff; box-shadow: 0 1px 8px rgba(66,133,244,.35); }
+        .btn-ghost { background: #222a3d; color: #e9efff; border: 1px solid #2e3752; }
+        .btn-danger { background: #3a1f27; color: #ffd7d7; border: 1px solid #5c2a36; }
+      `}</style>
+
+      <div className="sessions-wrap">
+        <h2 className="sessions-title">
+          {t("Chat Sessions", "Görüşme Kayıtları")}
+        </h2>
+
+        {loading ? (
+          <div style={{ color: "var(--text-muted)" }}>
+            {t("Loading...", "Yükleniyor...")}
+          </div>
+        ) : items.length === 0 ? (
+          <div style={{ color: "var(--text-muted)" }}>
+            {t("No sessions yet.", "Henüz kayıt yok.")}
+          </div>
+        ) : (
+          items.map((it) => {
+            const left = it?.user1_name || `#${it?.user1_id}`;
+            const right = it?.user2_name || `#${it?.user2_id}`;
+            const prev = previewFromTranscript(it?.transcript);
 
             return (
-              <div
-                key={it.id}
-                style={{
-                  background: "var(--card-bg, #1f2433)",
-                  border: "1px solid var(--card-border, #2a3042)",
-                  boxShadow: "0 4px 16px rgba(0,0,0,.12)",
-                  borderRadius: 12,
-                  padding: 14,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ lineHeight: 1.4 }}>
-                    <div style={{ fontWeight: 700 }}>
-                      #{it.id} — {formatDate(it.session_time_stamp)}
-                    </div>
-                    <div style={{ fontSize: 13, color: "#9aa3b2" }}>
-                      {t("Peer", "Karşı kullanıcı")}: {peerId}
-                    </div>
+              <div key={it.id} className="session-card">
+                <div className="card-head">
+                  <div className="meta-line">
+                    <span className="pill">{left}</span>
+                    <span className="pill">{right}</span>
+                    <span className="when">
+                      • {formatDate(it?.session_time_stamp, language)}
+                    </span>
                   </div>
-
-                  <div
-                    className="session-actions"
-                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => handleDelete(it.id)}
                   >
-                    <button
-                      onClick={() => handleShow(it.id)}
-                      style={btn("primary")}
-                      title={t("Show transcript", "Transkripti göster")}
-                    >
-                      {t("Show Transcript", "Transkripti Göster")}
-                    </button>
-
-                    <button
-                      onClick={() => handleOpenSummary(it.id)}
-                      style={btn("ghost")}
-                      title={t("View summary page", "Özet sayfasını aç")}
-                    >
-                      {t("View Summary", "Özeti Gör")}
-                    </button>
-
-                    <button
-                      onClick={() => handleSummarizeInline(it.id)}
-                      style={btn("ghost")}
-                      title={t("Summarize inline", "Kartta özet çıkar")}
-                      disabled={!!sumLoading[it.id]}
-                    >
-                      {sumLoading[it.id]
-                        ? t("Summarizing...", "Özetleniyor...")
-                        : t("Summarize Inline", "Kartta Özetle")}
-                    </button>
-
-                    <button
-                      onClick={() => handleDownloadSummaryPdf(it.id)}
-                      style={btn("outline")}
-                      title={t("Download summary PDF", "Özeti PDF indir")}
-                    >
-                      {t("Download PDF", "PDF İndir")}
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(it.id)}
-                      style={btn("danger")}
-                      title={t("Delete session", "Kaydı sil")}
-                    >
-                      {t("Delete", "Sil")}
-                    </button>
-                  </div>
+                    {t("Delete", "Sil")}
+                  </button>
                 </div>
 
-                {/* Transcript önizleme */}
-                {joined && (
-                  <div style={{ marginTop: 10 }}>
-                    <div
-                      className={`session-preview ${
-                        isExpanded ? "scrollable" : ""
-                      }`}
-                      style={{
-                        maxHeight: isExpanded ? 220 : 84,
-                      }}
-                    >
-                      {joined}
-                    </div>
-                    <div style={{ marginTop: 8 }}>
-                      <button
-                        onClick={() =>
-                          setExpanded((m) => ({ ...m, [it.id]: !isExpanded }))
-                        }
-                        style={btn("ghost")}
-                      >
-                        {isExpanded
-                          ? t("Show Less", "Daha Az Göster")
-                          : t("Show More", "Daha Fazla Göster")}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {prev && <div className="preview-box">{prev}</div>}
 
-                {/* Özet varsa kart altında göster */}
-                {summaries[it.id] && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      whiteSpace: "pre-wrap",
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px dashed #3a425a",
-                      borderRadius: 8,
-                      padding: 10,
-                      color: "#dfe6f3",
-                      fontSize: 14.5,
-                    }}
+                <div className="actions">
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => navigate(`/sessions/${it.id}`)}
                   >
-                    {summaries[it.id]}
-                  </div>
-                )}
+                    {t("Show Transcript", "Transkripti Göster")}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => navigate(`/sessions/${it.id}/summary`)}
+                  >
+                    {t("Show Summary", "Özeti Göster")}
+                  </button>
+                </div>
               </div>
             );
-          })}
-        </div>
-      )}
-    </div>
+          })
+        )}
+      </div>
+    </>
   );
-}
-
-function btn(variant = "primary") {
-  const base = {
-    borderRadius: 10,
-    padding: "9px 14px",
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: "pointer",
-    border: "1px solid transparent",
-  };
-  if (variant === "primary") {
-    return {
-      ...base,
-      background:
-        "linear-gradient(135deg, var(--btn1,#5c93f7), var(--btn2,#4285f4))",
-      color: "#fff",
-      boxShadow: "0 1px 8px rgba(66,133,244,.35)",
-    };
-  }
-  if (variant === "outline") {
-    return {
-      ...base,
-      background: "transparent",
-      color: "#cfe0ff",
-      border: "1px solid #3b4663",
-    };
-  }
-  if (variant === "danger") {
-    return {
-      ...base,
-      background: "#3a1d1d",
-      color: "#ffbdbd",
-      border: "1px solid #5a2a2a",
-    };
-  }
-
-  return {
-    ...base,
-    background: "#222a3d",
-    color: "#e9efff",
-    border: "1px solid #2e3752",
-  };
 }
