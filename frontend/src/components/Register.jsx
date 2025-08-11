@@ -295,7 +295,6 @@ export default function Register() {
   );
 }
 
-// — Support components —
 function Switch({ checked, onChange }) {
   return (
     <div

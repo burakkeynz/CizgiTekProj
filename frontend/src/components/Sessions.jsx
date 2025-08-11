@@ -1,10 +1,8 @@
-// src/components/Sessions.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "./LanguageContext";
 import api from "../api";
 
-// ---- helpers ----
 const TZ = "Europe/Istanbul";
 
 function formatDate(ts, lang = "tr") {
@@ -22,12 +20,10 @@ function formatDate(ts, lang = "tr") {
   }
 }
 
-// Köşeli parantezli tag'leri ve gürültü ifadelerini temizle (Türkçe harflere dokunma)
+// Köşeli parantezli tag'leri ve gürültü ifadelerini temizle
 const BRACKET_TAGS = /\[[^\]]+\]/g;
-// Eski modellerin yaygın “gürültü” kalıpları (İngilizce):
 const NOISE_PHRASES =
   /\b(?:no speech detected|typing sounds?|high[- ]pitched(?: tone| ringing| beep)?|beep|sound of a (?:machine|device)|machine\/device operating)\b/gi;
-// Sadece gerçek doldurucular (ASCII), TR harfleri kesinlikle hedef değil:
 const FILLERS = /\b(?:uh-?huh|uh|um+|hmm+|mm+|ha+ ?ha+)\b/gi;
 
 function cleanText(s) {
@@ -76,6 +72,7 @@ export default function Sessions({ currentUser }) {
   React.useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    //Eslintin “load bağımlılığa eklenmeli” uyarısını susturmak için bir üst satırı ekledim
   }, []);
 
   async function handleDelete(id) {
@@ -97,7 +94,29 @@ export default function Sessions({ currentUser }) {
   return (
     <>
       <style>{`
-        .sessions-wrap { padding: 24px; background: var(--bg-main); }
+        /* Scrollable middle-area (Logs ile aynı yaklaşım) */
+        .sessions-scrollable {
+          height: 100vh;            /* görünür alan kadar */
+          overflow-y: auto;          /* sadece orta kısım kayar */
+          padding: 24px;
+          background: var(--bg-main);
+        }
+        .sessions-scrollable {
+          scrollbar-width: thin;
+          scrollbar-color: var(--border-card) var(--bg-main);
+        }
+        .sessions-scrollable::-webkit-scrollbar {
+          width: 7px;
+          background: var(--bg-main);
+        }
+        .sessions-scrollable::-webkit-scrollbar-thumb {
+          background: var(--border-card);
+          border-radius: 10px;
+        }
+        .sessions-scrollable::-webkit-scrollbar-thumb:hover {
+          background: var(--accent-muted);
+        }
+
         .sessions-title { margin: 0 0 16px; color: var(--text-main); font-weight: 800; letter-spacing: .2px; }
 
         .session-card {
@@ -143,7 +162,7 @@ export default function Sessions({ currentUser }) {
         .btn-danger { background: #3a1f27; color: #ffd7d7; border: 1px solid #5c2a36; }
       `}</style>
 
-      <div className="sessions-wrap">
+      <div className="sessions-scrollable">
         <h2 className="sessions-title">
           {t("Chat Sessions", "Görüşme Kayıtları")}
         </h2>
