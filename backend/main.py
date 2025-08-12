@@ -169,27 +169,6 @@ def _is_trash_text(s: str) -> bool:
 
     return False
 
-# --------- DEDUP yardımcıları (EKLENDİ) ---------
-def _norm_txt(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip().lower())
-
-def _dedupe_merge(existing, new_items):
-    ex = [{"text": (e["text"] if isinstance(e, dict) else str(e))} for e in (existing or [])]
-    nw = [{"text": (n["text"] if isinstance(n, dict) else str(n))} for n in (new_items or [])]
-
-    recent = {_norm_txt(it["text"]) for it in ex[-50:]}  # yakın geçmişi hatırla
-    merged = ex[:]
-    for it in nw:
-        key = _norm_txt(it["text"])
-        if merged and _norm_txt(merged[-1]["text"]) == key:
-            continue
-        if key in recent:
-            continue
-        merged.append({"text": it["text"]})
-        recent.add(key)
-    return merged
-# -----------------------------------------------
-
 # PCM akış state
 pcm_states = {
     # sid: {...}
@@ -288,17 +267,6 @@ async def _flush_and_save_sessionlog(sid: str):
         pcm_states.pop(sid, None)
         return
 
-    # ---- TEK-YAZAN KURAL (EKLENDİ) ----
-    role = (st.get("role") or "").lower()
-    if role and role != "caller":
-        pcm_states.pop(sid, None)
-        return
-    if (not role) and st.get("user_id") is not None and st.get("peer_user_id") is not None:
-        if int(st["user_id"]) > int(st["peer_user_id"]):
-            pcm_states.pop(sid, None)
-            return
-    # -----------------------------------
-
     if st.get("user_id") and st.get("peer_user_id"):
         db: Session = next(get_db())
         call_id = st.get("call_id")
@@ -309,17 +277,15 @@ async def _flush_and_save_sessionlog(sid: str):
                 row = db.query(SessionLog).filter(SessionLog.call_id == call_id).first()
                 if row:
                     existing = decrypt_message(row.transcript) or []
-                    merged = _dedupe_merge(existing, items)
-                    row.transcript = encrypt_message(merged[-500:])
+                    row.transcript = encrypt_message((existing + items)[-500:])  
                     row.updated_at = now_tr()
                 else:
-                    clean_first = _dedupe_merge([], items)
                     row = SessionLog(
                         call_id=call_id,
                         user1_id=int(st["user_id"]),
                         user2_id=int(st["peer_user_id"]),
                         session_time_stamp=st.get("session_ts") or now_tr(),
-                        transcript=encrypt_message(clean_first),
+                        transcript=encrypt_message(items),
                     )
                     db.add(row)
             else:
@@ -348,16 +314,14 @@ async def _flush_and_save_sessionlog(sid: str):
                 )
                 if row:
                     existing = decrypt_message(row.transcript) or []
-                    merged = _dedupe_merge(existing, items)
-                    row.transcript = encrypt_message(merged[-500:])
+                    row.transcript = encrypt_message((existing + items)[-500:])
                     row.updated_at = now_tr()
                 else:
-                    clean_first = _dedupe_merge([], items)
                     row = SessionLog(
                         user1_id=int(st["user_id"]),
                         user2_id=int(st["peer_user_id"]),
                         session_time_stamp=approx,
-                        transcript=encrypt_message(clean_first),
+                        transcript=encrypt_message(items),
                     )
                     db.add(row)
 
@@ -377,8 +341,7 @@ async def _flush_and_save_sessionlog(sid: str):
                 row = db.query(SessionLog).filter(SessionLog.call_id == call_id).first()
                 if row:
                     existing = decrypt_message(row.transcript) or []
-                    merged = _dedupe_merge(existing, items)
-                    row.transcript = encrypt_message(merged[-500:])
+                    row.transcript = encrypt_message((existing + items)[-500:])
                     row.updated_at = now_tr()
                     db.commit()
                     print(f"[PCM][SAVE][MERGED] session_logs.id={row.id} (IntegrityError sonrası)")
